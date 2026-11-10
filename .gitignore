@@ -1,0 +1,8 @@
+# 이 저장소에는 암호화된 site/index.html 만 올림 — 원본 대시보드·데이터·모델 결과는 절대 올리지 않음
+.DS_Store
+my_dashboard.html
+*.csv
+*.pkl
+*.parquet
+*.xlsx
+.env

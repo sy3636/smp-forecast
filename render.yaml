@@ -1,0 +1,23 @@
+# Render Blueprint — SMP Forecast 대시보드 (무료 Static Site)
+# 배포 대상은 site/ 폴더 하나뿐: 비밀번호로 암호화된 index.html + robots.txt
+# (이 파일과 README.md 는 저장소에만 있고 웹에는 나가지 않음)
+services:
+  - type: web
+    runtime: static
+    name: smp-forecast                      # 주소: https://smp-forecast.onrender.com (이미 쓰인 이름이면 뒤에 글자가 붙음)
+    buildCommand: echo "no build step - site/index.html is prebuilt"
+    staticPublishPath: ./site
+    autoDeployTrigger: commit               # GitHub 에 올릴 때마다 자동 배포
+    headers:
+      - path: /*
+        name: X-Robots-Tag
+        value: noindex, nofollow            # 검색 엔진에 안 나오게
+      - path: /*
+        name: Cache-Control
+        value: no-cache                     # 새로 올리면 바로 새 화면이 보이게
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

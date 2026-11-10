@@ -85,7 +85,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: none;
 .tile .label { word-break: keep-all; color: var(--ink-1); font-size: 17px; font-weight: 800; letter-spacing: -0.01em; display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 22px; margin-bottom: 6px; }
 .tile .label .badge { flex: none; }
 .tile .label .cat { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #0b2a4a; margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 0 3px rgba(255,255,255,0.7); }
-.tile .value { font-size: 30px; font-weight: 650; margin: 2px 0; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tile .value { font-size: 27px; font-weight: 650; margin: 2px 0; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tile .value small { font-size: 15px; font-weight: 500; color: var(--ink-3); margin-left: 3px; letter-spacing: 0; }
 .tile .value .v-mae, .tile .value .v-cover { color: var(--ink-1); }
 /* 한눈에 보기 경보 칸 — 이전 모양: 흰 알약 배지 + 색 원 아이콘, 굵은 파랑(급락·제주)/빨강(급등) 숫자 */
@@ -104,9 +104,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: none;
 .tile .lv { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; column-gap: 12px; padding: 8px 0; }
 .tile .lv + .lv { border-top: 1px solid var(--wash-2); }
 .tile .lv .badge { justify-self: start; }
-.tile .lv .value { font-size: 27px; margin: 0; line-height: 1.15; }
+.tile .lv .value { font-size: 27px; margin: 0; line-height: 1.15; }   /* 경보 칸 숫자 = 가격 칸 숫자(7.02)와 같은 크기·굵기 */
 .tile .lv .note { grid-column: 2; }
 .tile.crash2 .label { min-height: 0; margin-bottom: 2px; }
+/* 칸이 좁아지면 — 숫자를 줄이고(27→21px), 더 좁으면 배지를 숫자 위로 올려 칸 밖으로 안 나가게 */
+.card.tile { container-type: inline-size; }
+.tile .lv > * { min-width: 0; }
+.tile .lv .value { font-size: clamp(20px, 9cqi, 27px); }
+@container (max-width: 300px) { .tile .lv { grid-template-columns: minmax(0, 1fr); row-gap: 6px; } .tile .lv .note { grid-column: 1; } }
 /* 예측근거 — 막대 목록 */
 .bar-list { display: grid; gap: 6px; margin-top: 4px; }
 .bl-row { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 10px; height: 34px; padding: 0 10px; font-size: 14.5px; }
@@ -307,7 +312,7 @@ footer { margin-top: 28px; color: #1f3b5c; font-size: 13px; line-height: 1.7; }
 .notice b { color: #78350f; }
 .notice code { font-size: 12.5px; background: rgba(255,255,255,0.7); border-radius: 4px; padding: 1px 5px; }
 @media (max-width: 900px) { .day-grid, .two, .stat-cards { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 520px) { .card { padding: 16px; } .card.tile { padding: 16px; } .tile .value { font-size: 28px; } h1 { font-size: 32px; } }
+@media (max-width: 520px) { .card { padding: 16px; } .card.tile { padding: 16px; } .tile .value { font-size: 25px; } h1 { font-size: 32px; } }
 /* 흐림 효과를 못 쓰는 브라우저 — 칸을 조금 더 불투명하게 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .card { background: rgba(255,255,255,0.88); } }
 /* 위쪽 메뉴 — 세 화면 (smp.today처럼 메뉴를 눌러 화면 전환) */
@@ -995,7 +1000,7 @@ function select(i) {
   store.set("smp-dash-date", d.d);
   $("pick").value = d.d;
   $("prev").disabled = cur === 0; $("next").disabled = cur === days.length - 1;
-  $("jump").value = d.d; if ($("jump").value !== d.d) $("jump").value = "";
+  $("jump").value = "";                 // 기본은 항상 안내 문구(「실제 … 이동…」) — 목록에서 직접 고를 때만 그 날짜를 보여 줌
   $("d-title").innerHTML = `${kdate(d.d)}(${w.dow || ""})${w.hol ? ` <span class="chip">${w.hol}</span>` : ""}`;
   const ok = d.y.map((y, i) => y == null ? null : Math.abs(d.p[i] - y));
   const inb = d.y.filter((y, i) => y != null && y >= d.lo[i] && y <= d.hi[i]).length, ny = d.y.filter(y => y != null).length;
@@ -1058,7 +1063,7 @@ $("d-table-open").addEventListener("click", () => {
 });
 $("d-table-close").addEventListener("click", () => tblDlg.close ? tblDlg.close() : tblDlg.removeAttribute("open"));
 tblDlg.addEventListener("click", e => { if (e.target === tblDlg) tblDlg.close(); });   // 어두운 바깥을 누르면 닫힘
-$("jump").addEventListener("change", e => { if (e.target.value) select(idxOf[e.target.value]); });
+$("jump").addEventListener("change", e => { const v = e.target.value; if (v) { select(idxOf[v]); $("jump").value = v; } });
 
 
 /* ---------- 사건 판정 결과 (발표용 표 두 개, 시험 기간·모델을 바꾸면 다시 셈) ---------- */

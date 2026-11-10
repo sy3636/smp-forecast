@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>SMP Forecast</title>
+<script>try { if (sessionStorage.getItem("smp-forecast-key")) document.documentElement.classList.add("auto"); } catch (e) {}</script>
 <style>
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -39,6 +40,7 @@ button:disabled { opacity: 0.7; cursor: progress; }
 .msg { min-height: 20px; margin-top: 10px; font-size: 13px; color: #b42318; }
 .msg.busy { color: #3d5a78; }
 .foot { margin-top: 14px; font-size: 11.5px; color: #6b7f94; }
+.auto main { visibility: hidden; }   /* 새로고침 자동 열기 중에는 로그인 칸 숨김 */
 </style>
 </head>
 <body>
@@ -74,25 +76,49 @@ button:disabled { opacity: 0.7; cursor: progress; }
 // 대시보드 HTML 을 비밀번호로 암호화한 값 (PBKDF2-SHA256 → AES-256-GCM). 비밀번호가 맞을 때만 브라우저 안에서 풀림
 const P = /*__PAYLOAD__*/null;
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function unlock(pw) {
+const enc64 = buf => { let s = ""; new Uint8Array(buf).forEach(b => { s += String.fromCharCode(b); }); return btoa(s); };
+// 새로고침해도 다시 묻지 않도록 — 비밀번호가 아니라 이번 배포본의 열쇠만, 이 탭에서만 기억 (탭을 닫으면 지워짐)
+const KEEP = "smp-forecast-key";
+const keep = {
+  get() { try { return JSON.parse(sessionStorage.getItem(KEEP)); } catch (e) { return null; } },
+  set(v) { try { sessionStorage.setItem(KEEP, JSON.stringify(v)); } catch (e) {} },
+  clear() { try { sessionStorage.removeItem(KEEP); } catch (e) {} },
+};
+async function keyFromPassword(pw) {
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
-  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(P.salt), iterations: P.iter, hash: "SHA-256" },
-                                            base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(P.salt), iterations: P.iter, hash: "SHA-256" },
+                                 base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
+}
+async function decryptWith(key) {
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(P.iv) }, key, b64(P.ct));
   return new TextDecoder().decode(plain);
 }
+function show(html) { document.open(); document.write(html); document.close(); }     // 대시보드로 바꿔 그림
 const msg = document.getElementById("msg"), go = document.getElementById("go"), pw = document.getElementById("pw");
 document.getElementById("gate").addEventListener("submit", async e => {
   e.preventDefault();
   go.disabled = true; msg.className = "msg busy"; msg.textContent = "여는 중…";
   try {
-    const html = await unlock(pw.value);
-    document.open(); document.write(html); document.close();      // 대시보드로 바꿔 그림
+    const key = await keyFromPassword(pw.value);
+    const html = await decryptWith(key);
+    keep.set({ salt: P.salt, k: enc64(await crypto.subtle.exportKey("raw", key)) });
+    show(html);
   } catch (err) {
     go.disabled = false; msg.className = "msg"; msg.textContent = "비밀번호가 맞지 않습니다";
     pw.select();
   }
 });
+// 이 탭에서 이미 들어온 적이 있으면 (새로고침) 바로 대시보드를 엶. 새 배포본이면 열쇠가 맞지 않아 다시 비밀번호를 물음
+(async () => {
+  const s = keep.get();
+  if (!s || s.salt !== P.salt) { keep.clear(); document.documentElement.classList.remove("auto"); return; }
+  try {
+    const key = await crypto.subtle.importKey("raw", b64(s.k), { name: "AES-GCM" }, false, ["decrypt"]);
+    show(await decryptWith(key));
+  } catch (err) {
+    keep.clear(); document.documentElement.classList.remove("auto");
+  }
+})();
 </script>
 </body>
 </html>

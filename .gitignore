@@ -1,8 +1,30 @@
-# 이 저장소에는 암호화된 site/index.html 만 올림 — 원본 대시보드·데이터·모델 결과는 절대 올리지 않음
+# 공개 저장소 — 코드만 올림. 데이터·모델 결과·원본 대시보드·인증키는 올리지 않음 (TEAM_REPRODUCE.md 0장)
 .DS_Store
-my_dashboard.html
-*.csv
+__pycache__/
+*.pyc
+.venv/
+logs/
+
+# 인증키 (예시 파일 *.env.example 만 올림)
+.env
+config/.env
+
+# 데이터·결과 파일
+data/
 *.pkl
 *.parquet
+*.csv
 *.xlsx
-.env
+*.pptx
+
+# 실험 부산물·백업
+experiments/ensemble/catboost_info/
+**/_backup/
+
+# outputs — 배포용 암호화 페이지(outputs/ensemble/deploy/site/)만 올림
+outputs/*
+!outputs/ensemble/
+outputs/ensemble/*
+!outputs/ensemble/deploy/
+outputs/ensemble/deploy/*
+!outputs/ensemble/deploy/site/

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>SMP Forecast</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font: 14px/1.55 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif; color: #0d3b66;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 50%, rgba(255,255,255,0.45) 100%),
+              linear-gradient(90deg, #ffe7c2 0%, #a9dcf6 24%, #6ec0f0 50%, #9dc9ee 74%, #f6c39b 100%); overflow: hidden; }
+/* 해·송전탑 — 대시보드 머리 띠와 같은 그림 (해: 왼쪽 위, 송전탑: 오른쪽 아래) */
+.sky { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.sun { position: absolute; left: 0; top: 16px; width: 220px; height: 193px; overflow: visible; }
+.sun-rays { stroke: #ffd166; stroke-width: 4; stroke-linecap: round; opacity: 0.75; }
+.sun-glow { animation: glow 6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+@keyframes glow { from { opacity: 0.75; transform: scale(0.96); } to { opacity: 1; transform: scale(1.04); } }
+.towers { position: absolute; right: 0; bottom: 0; width: min(560px, 62vw); height: auto; }
+.tower { fill: none; stroke: #25456b; stroke-width: 1.8; stroke-linejoin: round; opacity: 0.6; }
+.wires { fill: none; stroke: #25456b; stroke-width: 1.2; opacity: 0.45; }
+@media (prefers-reduced-motion: reduce) { .sun-glow { animation: none; } }
+@media (max-width: 600px) { .sun { width: 150px; height: 132px; } .towers { opacity: 0.55; } }
+
+main { position: relative; z-index: 1; min-height: 100%; display: grid; place-items: center; padding: 24px 16px; }
+.gate { width: 100%; max-width: 380px; text-align: center; background: rgba(255,255,255,0.86); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.95); border-radius: 20px; padding: 30px 26px 26px; box-shadow: 0 0 2px rgba(13,59,102,0.10), 0 0 32px rgba(13,59,102,0.14); }
+h1 { font-size: 28px; font-weight: 750; margin: 0 0 6px; letter-spacing: -0.02em; line-height: 1.2; }
+.lead { margin: 0 0 18px; color: #3d5a78; font-size: 13.5px; }
+label { display: block; text-align: left; font-size: 12.5px; font-weight: 600; color: #3d5a78; margin-bottom: 6px; }
+input { width: 100%; font: inherit; font-size: 16px; color: #0b0b0b; background: #fff; border: 1px solid rgba(13,59,102,0.18); border-radius: 12px;
+  padding: 11px 14px; letter-spacing: 0.08em; }
+input:focus { outline: 2px solid #2a78d6; outline-offset: 1px; }
+button { width: 100%; margin-top: 12px; font: inherit; font-weight: 650; font-size: 15px; color: #fff; background: #1f3a6b; border: 0; border-radius: 12px;
+  padding: 11px 14px; cursor: pointer; box-shadow: 0 0 2px rgba(13,59,102,0.2), 0 0 10px rgba(13,59,102,0.18); }
+button:hover { background: #18305a; }
+button:disabled { opacity: 0.7; cursor: progress; }
+.msg { min-height: 20px; margin-top: 10px; font-size: 13px; color: #b42318; }
+.msg.busy { color: #3d5a78; }
+.foot { margin-top: 14px; font-size: 11.5px; color: #6b7f94; }
+</style>
+</head>
+<body>
+<div class="sky" aria-hidden="true">
+  <svg class="sun" viewBox="0 0 240 210" aria-hidden="true">
+    <defs><radialGradient id="sunGlowL"><stop offset="0" stop-color="#fff6d6" stop-opacity="0.95"/><stop offset="1" stop-color="#fff6d6" stop-opacity="0"/></radialGradient></defs>
+    <g transform="translate(-50 0)">
+      <circle class="sun-glow" cx="170" cy="88" r="115" fill="url(#sunGlowL)"/>
+      <path class="sun-rays" d="M230.0 88.0 L246.0 88.0 M222.0 118.0 L235.8 126.0 M200.0 140.0 L208.0 153.8 M170.0 148.0 L170.0 164.0 M140.0 140.0 L132.0 153.8 M118.0 118.0 L104.2 126.0 M110.0 88.0 L94.0 88.0 M118.0 58.0 L104.2 50.0 M140.0 36.0 L132.0 22.2 M170.0 28.0 L170.0 12.0 M200.0 36.0 L208.0 22.2 M222.0 58.0 L235.8 50.0"/>
+      <circle cx="170" cy="88" r="42" fill="#ffd166"/>
+      <circle cx="170" cy="88" r="42" fill="none" stroke="#ffe39a" stroke-width="6" opacity="0.7"/>
+    </g>
+  </svg>
+  <svg class="towers" viewBox="840 40 640 140" preserveAspectRatio="xMaxYMax meet">
+    <defs><linearGradient id="wireFade" x1="0" x2="1"><stop offset="0" stop-color="#25456b" stop-opacity="0"/><stop offset="1" stop-color="#25456b" stop-opacity="0.5"/></linearGradient></defs>
+    <path class="wires" d="M872.7 87.9 Q957.7 99.9 1042.7 81.9 M865.9 107.0 Q950.9 119.0 1035.9 101.0 M937.3 87.9 Q1022.3 99.9 1107.3 81.9 M944.1 107.0 Q1029.1 119.0 1114.1 101.0" stroke="url(#wireFade)"/>
+    <path class="wires" d="M1042.7 81.9 Q1113.1 114.7 1183.4 98.7 M1035.9 101.0 Q1106.8 130.4 1177.8 114.4 M1107.3 81.9 Q1171.9 114.7 1236.6 98.7 M1114.1 101.0 Q1178.2 130.4 1242.2 114.4 M1183.4 98.7 Q1245.8 129.8 1308.2 113.8 M1177.8 114.4 Q1240.7 142.4 1303.5 126.4 M1236.6 98.7 Q1294.2 129.8 1351.8 113.8 M1242.2 114.4 Q1299.3 142.4 1356.5 126.4 M1308.2 113.8 Q1368.2 127.8 1428.2 115.8 M1303.5 126.4 Q1363.5 140.4 1423.5 128.4 M1351.8 113.8 Q1411.8 127.8 1471.8 115.8 M1356.5 126.4 Q1416.5 140.4 1476.5 128.4"/>
+    <path class="tower" d="M1058.0 172 L1071.0 74.0 L1075.0 60.0 L1079.0 74.0 L1092.0 172 M1068.9 74.0 L1084.1 93.6 M1081.1 74.0 L1065.9 93.6 M1065.9 93.6 L1084.1 93.6 M1065.9 93.6 L1087.1 113.2 M1084.1 93.6 L1062.9 113.2 M1062.9 113.2 L1087.1 113.2 M1062.9 113.2 L1090.0 132.8 M1087.1 113.2 L1060.0 132.8 M1060.0 132.8 L1090.0 132.8 M1060.0 132.8 L1093.0 152.4 M1090.0 132.8 L1057.0 152.4 M1057.0 152.4 L1093.0 152.4 M1057.0 152.4 L1096.0 172.0 M1093.0 152.4 L1054.0 172.0 M1054.0 172.0 L1096.0 172.0 M1042.7 77.9 L1107.3 77.9 M1042.7 77.9 L1068.3 84.9 M1107.3 77.9 L1081.7 84.9 M1035.9 97.0 L1114.1 97.0 M1035.9 97.0 L1065.4 104.0 M1114.1 97.0 L1084.6 104.0 M1196.0 172 L1206.0 94.0 L1210.0 80.0 L1214.0 94.0 L1224.0 172 M1203.9 94.0 L1218.5 109.6 M1216.1 94.0 L1201.5 109.6 M1201.5 109.6 L1218.5 109.6 M1201.5 109.6 L1220.9 125.2 M1218.5 109.6 L1199.1 125.2 M1199.1 125.2 L1220.9 125.2 M1199.1 125.2 L1223.3 140.8 M1220.9 125.2 L1196.7 140.8 M1196.7 140.8 L1223.3 140.8 M1196.7 140.8 L1225.6 156.4 M1223.3 140.8 L1194.4 156.4 M1194.4 156.4 L1225.6 156.4 M1194.4 156.4 L1228.0 172.0 M1225.6 156.4 L1192.0 172.0 M1192.0 172.0 L1228.0 172.0 M1183.4 94.7 L1236.6 94.7 M1183.4 94.7 L1203.8 101.7 M1236.6 94.7 L1216.2 101.7 M1177.8 110.4 L1242.2 110.4 M1177.8 110.4 L1201.4 117.4 M1242.2 110.4 L1218.6 117.4 M1318.5 172 L1326.0 112.0 L1330.0 98.0 L1334.0 112.0 L1341.5 172 M1323.8 112.0 L1338.0 124.0 M1336.2 112.0 L1322.0 124.0 M1322.0 124.0 L1338.0 124.0 M1322.0 124.0 L1339.9 136.0 M1338.0 124.0 L1320.1 136.0 M1320.1 136.0 L1339.9 136.0 M1320.1 136.0 L1341.8 148.0 M1339.9 136.0 L1318.2 148.0 M1318.2 148.0 L1341.8 148.0 M1318.2 148.0 L1343.6 160.0 M1341.8 148.0 L1316.4 160.0 M1316.4 160.0 L1343.6 160.0 M1316.4 160.0 L1345.5 172.0 M1343.6 160.0 L1314.5 172.0 M1314.5 172.0 L1345.5 172.0 M1308.2 109.8 L1351.8 109.8 M1308.2 109.8 L1324.2 116.8 M1351.8 109.8 L1335.8 116.8 M1303.5 122.4 L1356.5 122.4 M1303.5 122.4 L1322.2 129.4 M1356.5 122.4 L1337.8 129.4"/>
+  </svg>
+</div>
+<main>
+  <form class="gate" id="gate" autocomplete="off">
+    <h1>SMP Forecast</h1>
+    <p class="lead">비밀번호를 입력하면 대시보드가 열립니다</p>
+    <label for="pw">비밀번호</label>
+    <input id="pw" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit" id="go">들어가기</button>
+    <div class="msg" id="msg" role="status" aria-live="polite"></div>
+    <div class="foot">교육·연구 목적 · 팀 내부 공유 전용</div>
+  </form>
+</main>
+<script>
+// 대시보드 HTML 을 비밀번호로 암호화한 값 (PBKDF2-SHA256 → AES-256-GCM). 비밀번호가 맞을 때만 브라우저 안에서 풀림
+const P = /*__PAYLOAD__*/null;
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function unlock(pw) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(P.salt), iterations: P.iter, hash: "SHA-256" },
+                                            base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(P.iv) }, key, b64(P.ct));
+  return new TextDecoder().decode(plain);
+}
+const msg = document.getElementById("msg"), go = document.getElementById("go"), pw = document.getElementById("pw");
+document.getElementById("gate").addEventListener("submit", async e => {
+  e.preventDefault();
+  go.disabled = true; msg.className = "msg busy"; msg.textContent = "여는 중…";
+  try {
+    const html = await unlock(pw.value);
+    document.open(); document.write(html); document.close();      // 대시보드로 바꿔 그림
+  } catch (err) {
+    go.disabled = false; msg.className = "msg"; msg.textContent = "비밀번호가 맞지 않습니다";
+    pw.select();
+  }
+});
+</script>
+</body>
+</html>

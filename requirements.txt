@@ -1,0 +1,11 @@
+# Python 3.12 이상 (작성 환경 3.14) — TEAM_REPRODUCE.md 2-2 와 같은 버전
+pandas==3.0.5
+numpy==2.5.2
+lightgbm==4.7.0
+scikit-learn==1.9.0
+catboost==1.2.10
+xgboost==3.4.1
+scipy
+pyarrow
+requests
+cryptography        # 배포용 암호화 페이지 만들기 (encrypt_dashboard.py)

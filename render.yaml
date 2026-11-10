@@ -1,12 +1,12 @@
 # Render Blueprint — SMP Forecast 대시보드 (무료 Static Site)
-# 배포 대상은 site/ 폴더 하나뿐: 비밀번호로 암호화된 index.html + robots.txt
-# (이 파일과 README.md 는 저장소에만 있고 웹에는 나가지 않음)
+# 웹에 나가는 것은 outputs/ensemble/deploy/site/ 하나뿐: 비밀번호로 암호화된 index.html + robots.txt
+# (코드·설정 파일은 GitHub 저장소에만 있고 웹 주소로는 열리지 않음)
 services:
   - type: web
     runtime: static
-    name: smp-forecast                      # 주소: https://smp-forecast.onrender.com (이미 쓰인 이름이면 뒤에 글자가 붙음)
+    name: smp-forecast                      # 주소: https://smp-forecast.onrender.com
     buildCommand: echo "no build step - site/index.html is prebuilt"
-    staticPublishPath: ./site
+    staticPublishPath: ./outputs/ensemble/deploy/site
     autoDeployTrigger: commit               # GitHub 에 올릴 때마다 자동 배포
     headers:
       - path: /*

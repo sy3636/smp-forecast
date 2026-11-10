@@ -1,0 +1,18 @@
+{
+  "_설명": "사건(급등·급락) 판정과 평가 기간 설정 — experiments/ensemble/events.py, common.py, build_my_dashboard.py 가 읽음. 날짜는 모두 양끝 포함.",
+  "data_start": "2020-01-01",
+  "data_end": "2026-10-31",
+  "train": ["2020-01-01", "2024-12-31"],
+  "test": ["2025-01-01", "2026-10-31"],
+  "second_test_from": "2026-01-01",
+  "test_label": "시험",
+  "issue_hour": {"price": 21, "crash": 15, "spike": 21},
+  "median_days": 28,
+  "spike_add_won": 20,
+  "land_crash_won": 30,
+  "land_crash_hours": [11, 15],
+  "include_jeju": true,
+  "jeju_rule": "le0",
+  "segment_cross_midnight": false,
+  "spike_daily_ratio": 1.25
+}

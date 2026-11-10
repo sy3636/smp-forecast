@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMP 예측 과제 한눈에</title>
+<!-- build_overview.py 가 /*__DATA__*/ 자리에 결과 데이터를 넣어 outputs/ensemble/overview.html 로 저장 -->
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f1; --surface: #fcfcfb; --surface-2: #f0efec; --border: #e3e2de;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984; --grid: #ebeae6;
+  --s1: #2a78d6; --s2: #eb6834; --other: #a3a29c; --band: rgba(42, 120, 214, .16);
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #2f2f2c;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2a2a27;
+    --s1: #3987e5; --s2: #d95926; --other: #6b6a65; --band: rgba(57, 135, 229, .22);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #2f2f2c;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2a2a27;
+  --s1: #3987e5; --s2: #d95926; --other: #6b6a65; --band: rgba(57, 135, 229, .22);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+h1 { font-size: 26px; margin: 0; line-height: 1.3; }
+h2 { font-size: 18px; margin: 0 0 4px; }
+h3 { font-size: 15px; margin: 0 0 6px; }
+p { margin: 0; }
+header { padding: 28px 0 18px; }
+.eyebrow { color: var(--text-2); font-size: 13px; }
+.lede { color: var(--text-2); margin-top: 6px; max-width: 860px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+.hint { color: var(--text-2); font-size: 13px; margin-bottom: 12px; }
+.small { font-size: 13px; color: var(--text-2); }
+.sec-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 0 0 8px; }
+.tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.task { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.task .tag { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.task .name { font-size: 15px; font-weight: 650; }
+.task .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.25; }
+.task .v small { font-size: 14px; font-weight: 600; color: var(--text-2); }
+.task .s { font-size: 12.5px; color: var(--text-2); }
+.task ul { margin: 2px 0 0; padding-left: 16px; font-size: 12.5px; color: var(--text-2); }
+.badge { display: inline-flex; align-items: center; gap: 5px; border: 1.5px solid var(--border); border-radius: 999px;
+         padding: 0 9px; font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+.badge .i { font-size: 11px; }
+.b-good { border-color: var(--good); } .b-good .i { color: var(--good); }
+.b-crit { border-color: var(--critical); } .b-crit .i { color: var(--critical); }
+.b-warn { border-color: var(--warning); } .b-warn .i { color: var(--warning); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); border-radius: 9px; padding: 6px 12px; font-size: 14px; }
+button:hover { border-color: var(--text-2); }
+input[type="date"] { border: 1px solid var(--border); background: var(--surface-2); border-radius: 9px; padding: 5px 10px; }
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.day-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
+.day-head .date { font-weight: 700; font-size: 18px; }
+.day-grid { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+.panel { border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
+.legend i.ln { height: 0; border-top: 2px solid; border-radius: 0; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.side { display: grid; gap: 10px; }
+.stat { display: flex; justify-content: space-between; font-size: 14px; border-bottom: 1px solid var(--border); padding: 4px 0; }
+.stat b { font-variant-numeric: tabular-nums; }
+.warn-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; font-size: 14px;
+            border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+.warn-row .sub { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.sentence { font-size: 15px; line-height: 1.7; background: var(--surface-2); border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--text-2); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr.click { cursor: pointer; }
+tbody tr.click:hover { background: var(--surface-2); }
+.tbl-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+details summary { cursor: pointer; font-size: 14px; margin-top: 10px; }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+       border-radius: 8px; padding: 7px 10px; font-size: 12.5px; box-shadow: 0 6px 22px rgba(0, 0, 0, .14); }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; }
+.tip .r span:last-child { font-variant-numeric: tabular-nums; }
+footer { color: var(--muted); font-size: 12px; padding: 8px 0 32px; }
+@media (max-width: 860px) { .day-grid, .two { grid-template-columns: 1fr; } h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <p class="eyebrow">과제 1·2·3 + 급등 — Chronos-2 + LightGBM 앙상블</p>
+  <h1>SMP 예측 과제 한눈에</h1>
+  <p class="lede" id="lede"></p>
+</header>
+<main class="wrap">
+  <section aria-labelledby="h-sum">
+    <h2 id="h-sum" class="sec-title"></h2>
+    <div id="tasks" class="tasks"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-day">
+    <h2 id="h-day">날짜를 고르면 그날 결과</h2>
+    <p class="hint" id="dayHint"></p>
+    <div class="controls">
+      <button id="prev" type="button">◀ 전날</button>
+      <input id="date" type="date" aria-label="날짜 선택">
+      <button id="next" type="button">다음날 ▶</button>
+    </div>
+    <div class="day-head"><span class="date" id="dDate"></span><span class="small" id="dSub"></span></div>
+    <div class="day-grid">
+      <div style="display:grid;gap:14px">
+        <div class="panel">
+          <h3>가격 예측 + 과제 2 · 80% 예측 범위</h3>
+          <div class="legend"><span><i class="ln" style="border-color:var(--text)"></i>실적</span>
+            <span><i class="ln" style="border-color:var(--s1)"></i>예측</span>
+            <span><i style="background:var(--band)"></i>80% 예측 범위</span></div>
+          <div id="chPrice" class="chart"></div>
+        </div>
+        <div class="panel">
+          <h3>과제 3 · 예측 근거</h3>
+          <p class="sentence" id="sentence"></p>
+          <div class="legend"><span><i style="background:var(--s2)"></i>가격을 올림</span>
+            <span><i style="background:var(--s1)"></i>가격을 내림</span>
+            <span><i style="background:var(--other)"></i>다른 모델(Chronos-2 등) 보정</span></div>
+          <div id="chExp" class="chart"></div>
+        </div>
+      </div>
+      <div class="side" id="side"></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-warn">
+    <h2 id="h-warn">과제 1 급락 · 급등 경보 성적</h2>
+    <p class="hint">경보 = 2024~2025년 급락·급등의 80%를 맞히는 확률값 이상, 주의 = 95%를 맞히는 값 이상. 기준값은 개발 구간에서만 정했습니다.</p>
+    <div class="two">
+      <div><div class="tbl-wrap" id="tblWarn"></div></div>
+      <div>
+        <p class="small" style="margin-bottom:6px">실제 급락·급등일 — 행을 누르면 그날로 이동</p>
+        <div class="tbl-wrap" id="tblEvents"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-t">
+    <h2 id="h-t">가격 예측 목표 판정 전체</h2>
+    <p class="hint">2024~2025년으로 모델·비율을 정했고, 이 기간은 평가만 했습니다(시험 구간으로 다시 맞추지 않음).</p>
+    <div id="tblT" class="tbl-wrap"></div>
+  </section>
+  <footer>experiments/ensemble/build_overview.py 로 생성 · 외부 라이브러리·인터넷 연결 없이 동작 · 데이터가 들어 있어 외부 배포 금지</footer>
+</main>
+<div id="tip" class="tip" hidden></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+(function () {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const WD = "일월화수목금토";
+  const byDate = new Map(DATA.days.map((d, i) => [d.d, i]));
+  const fmtDate = (s) => { const t = new Date(s + "T00:00:00"); return `${t.getFullYear()}. ${t.getMonth() + 1}. ${t.getDate()}.(${WD[t.getDay()]})`; };
+  const pct = (p) => `${Math.round(p * 100)}%`;
+  const won = (v) => Math.abs(v) < 0.05 ? "0.0원" : `${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}원`;
+  const badge = (ok, txt) => `<span class="badge ${ok ? "b-good" : "b-crit"}"><span class="i" aria-hidden="true">${ok ? "✓" : "✕"}</span>${txt}</span>`;
+  const level = (lv) => lv === "경보" ? `<span class="badge b-crit"><span class="i" aria-hidden="true">▲</span>경보</span>`
+    : lv === "주의" ? `<span class="badge b-warn"><span class="i" aria-hidden="true">●</span>주의</span>`
+    : `<span class="badge b-good"><span class="i" aria-hidden="true">✓</span>정상</span>`;
+
+  // ---------------------------------------------------------------- 머리말·성적 카드
+  const PL = DATA.period.label;
+  $("#lede").textContent = `가격 예측 비율(이 기간 평균) — ${DATA.mix}. 급락·급등 경보는 로지스틱 회귀·LightGBM·가격 신호를 섞어 「주의 / 경보」 2단계로 냅니다. ` +
+    `과제 3 근거 문장은 LightGBM 기여도(SHAP)를 6개 묶음으로 합쳐 자동으로 만듭니다.`;
+  $("#h-sum").textContent = `성적표 — ${PL}`;
+  $("#dayHint").textContent = `${PL} 중 날짜를 고릅니다. 모든 예측은 전날 만든 D+1 예측입니다(가격·급등은 날짜마다 한 번, 급락은 전날 15시 판단). ` +
+    `주소 끝에 #2026-09-27 처럼 날짜를 붙여도 됩니다.`;
+  const K = DATA.cards, Wt = DATA.warnTable;
+  const wrow = (key) => Wt.find((r) => r.key === key);
+  const c15 = wrow("crash15"), s25 = wrow("spike25");
+  const tg = (name) => K.targets.find((r) => r.name === name);
+  const mae = tg("MAE"), rmae = tg("rMAE"), mape = tg("MAPE"), bias = tg("편의"), cov = tg("80% 범위 포함률");
+  const mline = (r, unit, nd) => `<li>${r.name} ${r.v.toFixed(nd)}${unit} ${r.ok === "달성" ? "✓" : "✕"} (목표 ${r.goal})</li>`;
+  $("#tasks").innerHTML = [
+    `<div class="task"><span class="tag">가격 예측</span><span class="name">D+1 시간별 가격</span>
+      <span class="v">${mae.v.toFixed(2)}<small>원 평균 오차</small></span>
+      <ul>${mline(rmae, "", 3)}${mline(mape, "%", 2)}${mline(bias, "%", 2)}</ul>
+      <span class="s">목표 5개 중 ${K.ok}개 달성</span></div>`,
+    `<div class="task"><span class="tag">과제 1</span><span class="name">휴일 한낮 급락 경보</span>
+      <span class="v">${c15.wtp}/${c15.n}<small>일 적중 (15시 · 주의 이상)</small></span>
+      <span class="s">헛경보 ${c15.wfp}일 · 놓침 ${c15.n - c15.wtp}일 (휴일·주말 ${c15.days}일 판단)</span>
+      <span class="s">「경보」만 세면 ${c15.tp}/${c15.n}일 적중 (헛경보 ${c15.fp}일)</span></div>`,
+    `<div class="task"><span class="tag">과제 2</span><span class="name">80% 예측 범위</span>
+      <span class="v">${cov.v.toFixed(1)}<small>% 포함</small></span>
+      <span class="s">${badge(cov.ok === "달성", cov.ok)} 목표 75~85% · 이전 52%</span>
+      <span class="s">평균 폭 ${K.width}원 · 하한 아래 ${K.below}% · 상한 위 ${K.above}%</span></div>`,
+    `<div class="task"><span class="tag">과제 3</span><span class="name">예측 근거 문장</span>
+      <span class="v">${K.exp_days}<small>일 자동 생성</small></span>
+      <span class="s">영향 큰 순 — ${K.exp_rank}</span>
+      <span class="s">기준 + 묶음별 기여 = 예측값 (검산 오차 0원)</span></div>`,
+    `<div class="task"><span class="tag">급등</span><span class="name">직전 28일 대비 +25% 급등 경보</span>
+      <span class="v">${s25.tp}/${s25.n}<small>일 적중 (날짜별 경보)</small></span>
+      <span class="s">헛경보 ${s25.fp}일 (${s25.days}일 판단) — 급등이 드물어 헛경보가 많음</span>
+      <span class="s">매월 1~3일은 연료비 단가 변경일로 따로 표시</span></div>`,
+  ].join("");
+
+  // ---------------------------------------------------------------- 툴팁·SVG 공통
+  const tip = $("#tip");
+  function showTip(html, ev) {
+    tip.innerHTML = html; tip.hidden = false;
+    const b = tip.getBoundingClientRect();
+    let x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + b.width > innerWidth - 8) x = ev.clientX - b.width - 14;
+    if (y + b.height > innerHeight - 8) y = ev.clientY - b.height - 14;
+    tip.style.left = `${Math.max(8, x)}px`; tip.style.top = `${Math.max(8, y)}px`;
+  }
+  const hideTip = () => { tip.hidden = true; };
+  const row = (k, v) => `<div class="r"><span>${k}</span><span>${v}</span></div>`;
+  const NS = "http://www.w3.org/2000/svg";
+  function S(tag, a, parent) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (parent) parent.appendChild(e); return e; }
+  function txt(p, x, y, s, a) { const t = S("text", Object.assign({ x, y, "font-size": 11, fill: css("--text-2") }, a || {}), p); t.textContent = s; return t; }
+  function ticks(lo, hi, n) {
+    const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), e = raw / mag;
+    const st = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag, out = [];
+    for (let v = Math.floor(lo / st) * st; v <= Math.ceil(hi / st) * st + st / 2; v += st) out.push(+v.toFixed(6));
+    return out;
+  }
+  function svgPt(svg, ev) { const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal; return [(ev.clientX - r.left) * vb.width / r.width, (ev.clientY - r.top) * vb.height / r.height]; }
+
+  // ---------------------------------------------------------------- 날짜 이동
+  let cur = DATA.days.length - 1;
+  const h0 = decodeURIComponent(location.hash.slice(1));
+  if (byDate.has(h0)) cur = byDate.get(h0);
+  const dateIn = $("#date");
+  dateIn.min = DATA.days[0].d; dateIn.max = DATA.days[DATA.days.length - 1].d;
+  dateIn.addEventListener("change", () => { if (byDate.has(dateIn.value)) { cur = byDate.get(dateIn.value); renderDay(); } });
+  $("#prev").addEventListener("click", () => { if (cur > 0) { cur--; renderDay(); } });
+  $("#next").addEventListener("click", () => { if (cur < DATA.days.length - 1) { cur++; renderDay(); } });
+
+  // ---------------------------------------------------------------- 가격 + 80% 범위
+  function priceChart(D) {
+    const el = $("#chPrice"); el.innerHTML = "";
+    const Wd = Math.max(300, el.clientWidth || 700), H = 260, m = { l: 42, r: 40, t: 22, b: 26 };
+    const vals = [...D.y, ...D.p, ...D.lo, ...D.hi].filter((v) => v !== null);
+    if (!vals.length) { el.innerHTML = `<p class="small">자료 없음</p>`; return; }
+    const tk = ticks(Math.min(0, ...vals), Math.max(...vals), 5);
+    const x = (h) => m.l + (h - 0.5) / 24 * (Wd - m.l - m.r);
+    const y = (v) => H - m.b - (v - tk[0]) / (tk[tk.length - 1] - tk[0]) * (H - m.t - m.b);
+    const svg = S("svg", { viewBox: `0 0 ${Wd} ${H}`, role: "img", "aria-label": "시간별 실적·예측·80% 범위" }, el);
+    for (const t of tk) { S("line", { x1: m.l, x2: Wd - m.r, y1: y(t), y2: y(t), stroke: css("--grid") }, svg); txt(svg, m.l - 6, y(t) + 4, t, { "text-anchor": "end" }); }
+    for (const h of [3, 6, 9, 12, 15, 18, 21, 24]) txt(svg, x(h), H - 8, `${h}시`, { "text-anchor": "middle" });
+    txt(svg, m.l - 6, 11, "원/kWh", { "text-anchor": "end" });
+    const hs = [...Array(24).keys()].map((i) => i + 1);
+    const ok = hs.filter((h) => D.lo[h - 1] !== null && D.hi[h - 1] !== null);
+    if (ok.length) {
+      const d = ok.map((h, i) => `${i ? "L" : "M"}${x(h)},${y(D.hi[h - 1])}`).join("") + ok.slice().reverse().map((h) => `L${x(h)},${y(D.lo[h - 1])}`).join("") + "Z";
+      S("path", { d, fill: css("--band") }, svg);
+    }
+    const line = (arr, color) => {
+      const pts = hs.filter((h) => arr[h - 1] !== null);
+      if (pts.length) S("path", { d: pts.map((h, i) => `${i ? "L" : "M"}${x(h)},${y(arr[h - 1])}`).join(""), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+      return pts;
+    };
+    const py = line(D.y, css("--text")), pp = line(D.p, css("--s1"));
+    const ends = [];
+    if (py.length) ends.push({ v: D.y[py[py.length - 1] - 1], s: "실적" });
+    if (pp.length) ends.push({ v: D.p[pp[pp.length - 1] - 1], s: "예측" });
+    if (ends.length === 2 && Math.abs(y(ends[0].v) - y(ends[1].v)) < 13) { const up = ends[0].v >= ends[1].v ? 0 : 1; ends[up].dy = -7; ends[1 - up].dy = 7; }
+    for (const e of ends) txt(svg, Wd - m.r + 6, y(e.v) + 4 + (e.dy || 0), e.s, { fill: css("--text") });
+    const cross = S("line", { y1: m.t, y2: H - m.b, stroke: css("--muted"), visibility: "hidden" }, svg);
+    const dots = [css("--text"), css("--s1")].map((c) => S("circle", { r: 4.5, fill: c, stroke: css("--surface"), "stroke-width": 2, visibility: "hidden" }, svg));
+    const ov = S("rect", { x: m.l, y: m.t, width: Wd - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+    ov.addEventListener("pointermove", (ev) => {
+      const [px] = svgPt(svg, ev);
+      const h = Math.max(1, Math.min(24, Math.round((px - m.l) / (Wd - m.l - m.r) * 24 + 0.5)));
+      const a = D.y[h - 1], p = D.p[h - 1], lo = D.lo[h - 1], hi = D.hi[h - 1];
+      cross.setAttribute("x1", x(h)); cross.setAttribute("x2", x(h)); cross.setAttribute("visibility", "visible");
+      [a, p].forEach((v, i) => { if (v === null) { dots[i].setAttribute("visibility", "hidden"); return; } dots[i].setAttribute("cx", x(h)); dots[i].setAttribute("cy", y(v)); dots[i].setAttribute("visibility", "visible"); });
+      const inside = a !== null && lo !== null ? (a >= lo && a <= hi ? "범위 안" : "범위 밖") : "-";
+      showTip(`<b>${h}시</b>${row("실적", a === null ? "미공표" : a.toFixed(1) + "원")}${row("예측", p === null ? "-" : p.toFixed(1) + "원")}` +
+        `${row("80% 범위", lo === null ? "-" : `${lo.toFixed(1)} ~ ${hi.toFixed(1)}원`)}${row("판정", inside)}`, ev);
+    });
+    ov.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); dots.forEach((d) => d.setAttribute("visibility", "hidden")); });
+  }
+
+  // ---------------------------------------------------------------- 과제 3 기여도 (가로 막대, 0 기준 좌우)
+  const G = DATA.groups;                                // 6개 묶음 + 다른 모델 보정
+  function expChart(E) {
+    const el = $("#chExp"); el.innerHTML = "";
+    if (!E) { el.innerHTML = `<p class="small">근거 자료 없음</p>`; return; }
+    const v = E.c, n = v.length;
+    const Wd = Math.max(300, el.clientWidth || 700), rh = 26, m = { l: 112, r: 60, t: 6, b: 22 }, H = m.t + m.b + n * rh;
+    const lim = Math.max(2, ...v.map(Math.abs));
+    const tk = ticks(-lim, lim, 4);
+    const x = (val) => m.l + (val - tk[0]) / (tk[tk.length - 1] - tk[0]) * (Wd - m.l - m.r);
+    const svg = S("svg", { viewBox: `0 0 ${Wd} ${H}`, role: "img", "aria-label": "묶음별 기여(원)" }, el);
+    for (const t of tk) { S("line", { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, stroke: t === 0 ? css("--text-2") : css("--grid") }, svg); txt(svg, x(t), H - 6, `${t > 0 ? "+" : ""}${t}`, { "text-anchor": "middle" }); }
+    v.forEach((val, i) => {
+      const yy = m.t + i * rh, other = i === n - 1;
+      txt(svg, m.l - 8, yy + rh / 2 + 4, G[i], { "text-anchor": "end", fill: css("--text") });
+      const x0 = x(Math.min(0, val)), w = Math.max(1, Math.abs(x(val) - x(0)));
+      S("rect", { x: x0, y: yy + 5, width: w, height: rh - 10, rx: 3, fill: other ? css("--other") : val >= 0 ? css("--s2") : css("--s1") }, svg);
+      txt(svg, val >= 0 ? x(val) + 5 : x(val) - 5, yy + rh / 2 + 4, won(val), { "text-anchor": val >= 0 ? "start" : "end", fill: css("--text") });
+      const hit = S("rect", { x: m.l, y: yy, width: Wd - m.l - m.r, height: rh, fill: "transparent" }, svg);
+      hit.addEventListener("pointermove", (ev) => showTip(`<b>${G[i]}</b>${row("최근 4주 대비", won(val))}`, ev));
+      hit.addEventListener("pointerleave", hideTip);
+    });
+  }
+
+  // ---------------------------------------------------------------- 그날 요약
+  function warnRow(label, w, applicable) {
+    if (!applicable) return `<div class="warn-row"><span>${label}</span><span class="small">평일 — 해당 없음</span></div>`;
+    if (!w) return `<div class="warn-row"><span>${label}</span><span class="small">예측 없음</span></div>`;
+    const [p, lv, y] = w;
+    const act = y === null ? "실제 미공표" : y ? "실제 발생" : "실제 없음";
+    return `<div class="warn-row"><span>${label}</span>${level(lv)}<span class="sub">확률 ${pct(p)} · ${act}</span></div>`;
+  }
+  function renderDay() {
+    const D = DATA.days[cur];
+    dateIn.value = D.d;
+    history.replaceState(null, "", "#" + D.d);
+    const hol = DATA.hol[D.d], dom = +D.d.slice(8);
+    $("#dDate").textContent = fmtDate(D.d) + (hol ? " · " + hol : "");
+    $("#dSub").textContent = (D.off ? "휴일·주말" : "평일") + (dom <= 3 ? " · 매월 1~3일(연료비 단가 변경)" : "");
+    priceChart(D);
+    const E = DATA.exp[D.d];
+    $("#sentence").textContent = E ? E.s : "이 날짜는 근거 문장이 없습니다.";
+    expChart(E);
+    const pairs = D.y.map((a, i) => [a, D.p[i], D.lo[i], D.hi[i]]).filter((r) => r[0] !== null && r[1] !== null);
+    const mae = pairs.length ? pairs.reduce((s, r) => s + Math.abs(r[0] - r[1]), 0) / pairs.length : null;
+    const cov = pairs.filter((r) => r[2] !== null && r[0] >= r[2] && r[0] <= r[3]).length;
+    const w = DATA.warn[D.d] || {};
+    $("#side").innerHTML =
+      `<div class="panel" style="display:grid;gap:6px">
+         <h3 style="margin:0">그날 가격 예측</h3>
+         <div class="stat"><span>평균 오차(MAE)</span><b>${mae === null ? "-" : mae.toFixed(2) + "원"}</b></div>
+         <div class="stat"><span>80% 범위 안에 든 시간</span><b>${pairs.length ? `${cov} / ${pairs.length}` : "-"}</b></div>
+       </div>
+       <div class="panel" style="display:grid;gap:8px">
+         <h3 style="margin:0">과제 1 · 급락 경보</h3>
+         ${warnRow("15시 판단", w.c, D.off)}
+       </div>
+       <div class="panel" style="display:grid;gap:8px">
+         <h3 style="margin:0">급등 경보 (+25%)</h3>
+         ${warnRow("이날 급등", w.s, true)}
+       </div>`;
+  }
+
+  // ---------------------------------------------------------------- 경보 성적표·실제 발생일
+  $("#tblWarn").innerHTML = `<table><thead><tr><th>모델</th><th class="num">실제</th><th class="num">경보 적중</th><th class="num">헛경보</th><th class="num">놓침</th>` +
+    `<th class="num">주의 포함 적중 / 헛경보</th><th class="num">판단 일수</th></tr></thead><tbody>` +
+    Wt.map((r) => `<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.tp}</td><td class="num">${r.fp}</td><td class="num">${r.fn}</td>` +
+      `<td class="num">${r.wtp} / ${r.wfp}</td><td class="num">${r.days}</td></tr>`).join("") +
+    `</tbody></table><p class="small" style="margin-top:8px">${PL} 기준 · 급락은 휴일·주말만 전날 15시에 판단 · ` +
+    `급등은 날짜마다 한 번 판단 · 20%·30%는 급등 기준 민감도</p>`;
+  const ev = Object.entries(DATA.warn).filter(([, w]) => (w.c && w.c[2] === 1) || (w.s && w.s[2] === 1))
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  const caught = (w) => !w ? "-" : w[1] === "경보" ? "경보 적중" : w[1] === "주의" ? "주의로 감지" : "놓침";
+  const evRow = (d, nm, cells) => `<tr class="click" data-d="${d}"><td>${fmtDate(d)}${DATA.hol[d] ? " · " + DATA.hol[d] : ""}</td><td>${nm}</td>${cells}</tr>`;
+  $("#tblEvents").innerHTML = `<table><thead><tr><th>날짜</th><th>종류</th><th>결과</th></tr></thead><tbody>` +
+    ev.flatMap(([d, w]) => [
+      ...(w.c && w.c[2] === 1 ? [evRow(d, "급락", `<td>${caught(w.c)}</td>`)] : []),
+      ...(w.s && w.s[2] === 1 ? [evRow(d, "급등", `<td>${caught(w.s)}</td>`)] : []),
+    ]).join("") + "</tbody></table>";
+  document.querySelectorAll("#tblEvents tr.click").forEach((tr) => tr.addEventListener("click", () => {
+    if (!byDate.has(tr.dataset.d)) return;
+    cur = byDate.get(tr.dataset.d); renderDay(); $("#h-day").scrollIntoView({ behavior: "smooth" });
+  }));
+
+  // ---------------------------------------------------------------- 목표 판정 표
+  const T = DATA.targets;
+  $("#tblT").innerHTML = `<table><thead><tr>${T.cols.map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>` +
+    T.rows.map((r) => `<tr>${r.map((v) => `<td>${v === "달성" ? badge(true, "달성") : v === "미달" ? badge(false, "미달") : v}</td>`).join("")}</tr>`).join("") +
+    "</tbody></table>";
+
+  let rt;
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderDay, 150); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderDay);
+  renderDay();
+})();
+</script>
+</body>
+</html>

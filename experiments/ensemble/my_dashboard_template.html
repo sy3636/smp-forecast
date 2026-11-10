@@ -1,0 +1,1359 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMP Forecast</title>
+<style>
+/* 2026-11-11 하늘 배경 + 반투명 칸 + 왼쪽 풍력 발전기.
+   이전(해·송전탑 머리 띠, 불투명 카드)은 _backup/my_dashboard_template_before_glass_20261111.html */
+:root {
+  color-scheme: light;
+  --page: #7aa2d3;                                   /* 하늘색 (배경 층이 안 그려질 때 대비) */
+  --surface: #ffffff; --key-top: #ffffff;            /* 툴팁·점 테두리 등 불투명 흰색 */
+  --glass: rgba(255,255,255,0.93); --glass-2: rgba(248,250,252,0.85); --glass-line: rgba(15,23,42,0.08);
+  --ink-1: #0f172a; --ink-2: #333c4b; --ink-3: #475060; --ink-4: #7b8595;
+  --grid: rgba(15,23,42,0.10); --axis: rgba(15,23,42,0.20); --border: rgba(15,23,42,0.09); --border-strong: rgba(15,23,42,0.16);
+  --wash: rgba(255,255,255,0.5); --wash-2: rgba(15,23,42,0.06);
+  --shadow-card: 0 12px 32px -14px rgba(23,52,96,0.35), inset 0 1px 0 rgba(255,255,255,0.65);
+  --shadow-xs: 0 1px 2px 0 rgba(15,23,42,0.06);
+  --shadow-md: 0 8px 20px -6px rgba(15,23,42,0.18);
+  --radius: 20px; --radius-sm: 14px; --radius-xs: 8px;
+  /* 데이터 색 — 뜻은 그대로(급락 파랑 · 급등 빨강 · 제주 보라) */
+  --s1: #2f74e0; --s1-wash: rgba(47,116,224,0.12); --s2: #f97316; --s3: #10b981;
+  --pred: #1e3a8a; --pred-wash: rgba(47,116,224,0.16); --actual: #8a94a3; --cover: #6366f1; --why: #db2777; --why-wash: rgba(219,39,119,0.12); --mae: #5b6b84;
+  --pos: #ef4444; --neg: #2f74e0;
+  --good: #10b981; --warning: #f59e0b; --critical: #ef4444; --good-ink: #047857; --ok: #047857; --jeju: #8b5cf6;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { position: relative; background: var(--page); color: var(--ink-1); -webkit-font-smoothing: antialiased;
+  font: 15px/1.6 "Pretendard", "Inter", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif; }
+
+/* 머리 띠 — 해(태양광)·송전탑, 하늘은 아침 → 한낮 → 저녁 (구름 버전은 _backup/my_dashboard_template_CLOUD_header_keep.html) */
+.sky { position: absolute; left: 0; right: 0; top: 0; height: 300px; z-index: 0; overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 52%, transparent 100%); mask-image: linear-gradient(180deg, #000 52%, transparent 100%);
+  background: linear-gradient(180deg, rgba(255,255,255,0) 55%, rgba(255,255,255,0.35) 100%),
+              linear-gradient(90deg, #ffe7c2 0%, #a9dcf6 24%, #6ec0f0 50%, #9dc9ee 74%, #f6c39b 100%); }
+/* 머리 띠 아래 — 화면에 고정된 하늘색 (풍력 발전기 버전과 같은 색) */
+.bg { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(1100px 560px at 88% 105%, rgba(255,255,255,0.42), rgba(255,255,255,0) 62%),
+              radial-gradient(900px 520px at 30% -10%, rgba(255,255,255,0.18), rgba(255,255,255,0) 60%),
+              linear-gradient(180deg, #5a87c1 0%, #739dd0 38%, #9dbde3 78%, #bcd3ee 100%); }
+.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sun-rays { stroke: #ffd166; stroke-width: 4; stroke-linecap: round; opacity: 0.75; }
+.sun-glow { animation: glow 6s ease-in-out infinite alternate; transform-origin: 170px 88px; }
+/* 해 — 제목 시작선(가운데 정렬 1200px 칸의 왼쪽 + 16px) 바로 왼쪽에 둠: 화면이 좁으면 왼쪽 밖으로 일부 나감 */
+.sun { position: absolute; top: 32px; width: 132px; height: 116px; overflow: visible;      /* 원래의 55% 크기 */
+  left: calc(max(0px, (100% - 1200px) / 2) + 16px - 52px - 66px); }                           /* 해 중심 = 제목 시작선 − 52px */
+.sun .sun-glow { transform-box: fill-box; transform-origin: center; }
+.tower { fill: none; stroke: #25456b; stroke-width: 1.8; stroke-linejoin: round; opacity: 0.6; }
+.wires { fill: none; stroke: #25456b; stroke-width: 1.2; opacity: 0.45; }
+@keyframes glow { from { opacity: 0.75; transform: scale(0.96); } to { opacity: 1; transform: scale(1.04); } }
+@media (prefers-reduced-motion: reduce) { .sun-glow { animation: none; } }
+@media (max-width: 760px) { .tower, .wires { opacity: 0.3; } }
+
+.wrap { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+header { padding: 22px 0 32px; text-align: left; color: #0b2a4a; }
+.meta { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin-top: 12px; }
+.meta span { font-size: 13.5px; font-weight: 500; color: #0b2a4a; background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.9); border-radius: 999px; padding: 2px 11px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+h1 { font-size: 44px; font-weight: 750; margin: 0; letter-spacing: -0.02em; line-height: 1.2; color: #0b2a4a; text-shadow: 0 1px 2px rgba(255,255,255,0.35); }
+
+/* 기본 — 반투명 칸 · 제목 · 입력 */
+h2 { font-size: 18px; font-weight: 800; margin: 0 0 2px; color: var(--ink-1); letter-spacing: -0.01em; }
+.muted { color: var(--ink-3); font-size: 14px; }
+.card { position: relative; background: var(--glass); border: 1px solid var(--glass-line); border-radius: var(--radius); padding: 24px; min-width: 0;
+  -webkit-backdrop-filter: blur(22px) saturate(100%); backdrop-filter: blur(22px) saturate(100%); box-shadow: var(--shadow-card); }
+section { margin-top: 16px; }
+.sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+button, select, input { font: inherit; font-size: 14px; color: var(--ink-1); background: rgba(255,255,255,0.82); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 6px 10px; box-shadow: var(--shadow-xs); transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s; }
+button { cursor: pointer; font-weight: 500; }
+button:hover, select:hover, input:hover { background: #ffffff; }
+button:active { background: rgba(255,255,255,0.6); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: none; border-color: var(--s1); box-shadow: 0 0 0 3px rgba(47,116,224,0.28); }
+
+/* 성적 카드 (KPI) */
+.tiles { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.tile-group { display: grid; gap: 16px; min-width: 0; }
+.tile-group.n2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.tile-group.warn3 { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .tile-group.warn3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) { .tiles { grid-template-columns: minmax(0, 1fr); gap: 12px; } .tile-group { gap: 12px; } }
+.card.tile { padding: 20px 22px; display: flex; flex-direction: column; }
+.tile .label { word-break: keep-all; color: var(--ink-1); font-size: 17px; font-weight: 800; letter-spacing: -0.01em; display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 22px; margin-bottom: 6px; }
+.tile .label .badge { flex: none; }
+.tile .label .cat { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #0b2a4a; margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 0 3px rgba(255,255,255,0.7); }
+.tile .value { font-size: 30px; font-weight: 650; margin: 2px 0; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tile .value small { font-size: 15px; font-weight: 500; color: var(--ink-3); margin-left: 3px; letter-spacing: 0; }
+.tile .value .v-mae, .tile .value .v-cover { color: var(--ink-1); }
+/* 한눈에 보기 경보 칸 — 이전 모양: 흰 알약 배지 + 색 원 아이콘, 굵은 파랑(급락·제주)/빨강(급등) 숫자 */
+.tile .value .v-blue { color: #1f5bab; }   /* 경보 칸 「구간」 숫자 — 파랑 한 단계 더 진하게 (#2367c2 → #1f5bab) */
+.tile .value .v-red { color: #b93534; }    /* 빨강 한 단계 더 진하게 (#d03c3b → #b93534) */
+.tile.crash2 .value { font-weight: 650; }
+.tile .badge, .warn-head .badge { background: #ffffff; color: var(--ink-1); box-shadow: none; border: 1px solid rgba(15,23,42,0.12); padding: 3px 10px 3px 7px; gap: 6px; font-size: 14px; }
+.tile .badge i, .warn-head .badge i { width: 18px; height: 18px; font-size: 10px; line-height: 1; display: inline-grid; place-items: center; color: #ffffff; overflow: visible; }
+.tile .b-경보 i, .warn-head .b-경보 i { background: #d03b3b; }
+.tile .b-주의 i, .warn-head .b-주의 i { background: #fab219; color: #0b0b0b; }
+.tile .b-정상 i, .warn-head .b-정상 i { background: #0ca30c; }
+.tile .note { color: var(--ink-3); font-size: 13.5px; word-break: keep-all; }
+.tile .crit { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--wash-2); font-size: 13px; color: var(--ink-3); word-break: keep-all; }
+.card.tile > :nth-last-child(2) { margin-bottom: 12px; }   /* 설명 줄(.crit)은 카드 바닥에 붙이고, 위 내용과는 12px 띄움 */
+/* 경보 카드 — 줄마다 배지 · 숫자 · 설명 */
+.tile .lv { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; column-gap: 12px; padding: 8px 0; }
+.tile .lv + .lv { border-top: 1px solid var(--wash-2); }
+.tile .lv .badge { justify-self: start; }
+.tile .lv .value { font-size: 27px; margin: 0; line-height: 1.15; }
+.tile .lv .note { grid-column: 2; }
+.tile.crash2 .label { min-height: 0; margin-bottom: 2px; }
+/* 예측근거 — 막대 목록 */
+.bar-list { display: grid; gap: 6px; margin-top: 4px; }
+.bl-row { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 10px; height: 34px; padding: 0 10px; font-size: 14.5px; }
+.bl-bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: var(--radius-xs); background: var(--why-wash); }
+.bl-name, .bl-val { position: relative; white-space: nowrap; }
+.bl-name { color: var(--ink-1); font-weight: 500; }
+.bl-name .rk { color: var(--ink-3); font-size: 13px; font-weight: 500; margin-right: 8px; font-variant-numeric: tabular-nums; }
+.bl-val { color: var(--ink-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.why { color: var(--why); font-weight: 600; }
+.v-blue { color: var(--s1); }
+.v-red { color: var(--pos); }
+.v-mae { color: var(--mae); }
+.v-cover, .sc-row b.v-cover { color: var(--cover); }
+
+.ln-thr { fill: none; stroke: var(--pos); stroke-width: 1.4; stroke-dasharray: 5 4; opacity: 0.85; }
+.key-dash { background: none !important; border-top: 2px dashed; height: 0 !important; }
+/* 시간 구간 성적표 · 토글 */
+.ev-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ev-head h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-left: 6px; }
+.seg-tabs { display: inline-flex; gap: 2px; padding: 3px; background: var(--wash-2); border-radius: 10px; flex-wrap: wrap; }
+.seg-tabs button { padding: 4px 12px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--ink-3); box-shadow: none; font-size: 14px; font-weight: 500; }
+.seg-tabs button:hover { color: var(--ink-1); background: transparent; }
+.seg-tabs button[aria-pressed="true"] { background: #ffffff; color: var(--ink-1); box-shadow: 0 1px 2px rgba(15,23,42,0.10), 0 0 0 1px rgba(15,23,42,0.04); }
+table.ev th.grp { text-align: center; border-bottom: 1px solid var(--grid); }
+table.ev td.sep, table.ev th.sep { border-left: 1px solid var(--grid); }
+table.ev td.na { color: var(--ink-4); text-align: center; }
+table.ev .big { font-size: 18px; }
+table.ev .ok-n { color: var(--ok); } table.ev .part-n { color: var(--ink-1); } table.ev .miss-n { color: var(--ink-3); }
+.tag2 { display: inline-block; font-size: 13px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: #fef2f2; color: #b91c1c; box-shadow: inset 0 0 0 1px rgba(220,38,38,0.2); margin-left: 4px; }
+.seg-list { margin: 6px 0 2px; padding: 8px 10px; background: var(--wash); border: 1px solid var(--glass-line); border-radius: var(--radius-xs); font-size: 14px; }
+.seg-row { padding: 2px 0; }
+
+/* 상태 배지 — 옅은 바탕 + 점 + 글자 */
+.badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; line-height: 1.5; padding: 2px 10px; border-radius: 999px;
+  white-space: nowrap; background: rgba(255,255,255,0.7); color: var(--ink-2); box-shadow: inset 0 0 0 1px rgba(107,114,128,0.2); }
+.badge i { font-style: normal; flex: none; width: 6px; height: 6px; border-radius: 50%; font-size: 0; line-height: 0; overflow: hidden; background: currentColor; }
+.b-경보 { background: #fef2f2; color: #b91c1c; box-shadow: inset 0 0 0 1px rgba(220,38,38,0.22); }
+.b-경보 i { background: var(--critical); }
+.b-주의 { background: #fffbeb; color: #b45309; box-shadow: inset 0 0 0 1px rgba(217,119,6,0.28); }
+.b-주의 i { background: var(--warning); }
+.b-정상 { background: #ecfdf5; color: #047857; box-shadow: inset 0 0 0 1px rgba(5,150,105,0.22); }
+.b-정상 i { background: var(--good); }
+.ok { color: var(--good-ink); font-weight: 600; }
+.ng { color: #dc2626; font-weight: 600; }
+.miss { color: var(--ink-1); font-weight: 600; }
+
+/* 차트 */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; color: var(--ink-3); margin: 4px 0 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-line { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+.key-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.key-band { width: 14px; height: 10px; border-radius: 2px; display: inline-block; background: var(--pred-wash); }
+/* 달력 히트맵 */
+.key-sq { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.cal { cursor: pointer; } .cal:hover { stroke: var(--ink-2); stroke-width: 1; }
+.cal-none, .cal-none-key { fill: rgba(255,255,255,0.6); stroke: var(--grid); stroke-width: 1; cursor: pointer; }
+.cal-none-key { background: rgba(255,255,255,0.6); border: 1px solid var(--grid); box-sizing: border-box; }
+.cal-dot { pointer-events: none; }
+.ev-c.cal-dot, .ev-s.cal-dot { stroke-width: 0.8; }   /* 월별 달력 급락·급등 점 — 흰 테두리 얇게 (일자별 그래프 점은 그대로) */
+.cal-sel { fill: none; stroke: var(--ink-1); stroke-width: 2; pointer-events: none; }
+#calendar { width: auto; }
+.tip { position: absolute; pointer-events: none; background: rgba(255,255,255,0.96); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 13.5px; color: var(--ink-2); box-shadow: var(--shadow-md); white-space: nowrap; display: none; z-index: 5; }
+.tip b { font-weight: 600; color: var(--ink-1); }
+.tip .row { display: flex; align-items: center; gap: 6px; }
+.tip .row em { font-style: normal; margin-left: auto; padding-left: 16px; font-weight: 500; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.gl { stroke: var(--grid); stroke-width: 1; }
+.ax { stroke: var(--axis); stroke-width: 1; }
+.tk { fill: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tk-2 { fill: var(--ink-2); font-size: 12.5px; }
+.tk-xs { font-size: 9.5px; }
+.tk-c { fill: var(--s1); font-size: 13px; font-weight: 600; } .tk-s { fill: var(--pos); font-size: 13px; font-weight: 600; }
+.ln-y { fill: none; stroke: var(--actual); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ln-p { fill: none; stroke: var(--pred); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ln-jeju { fill: none; stroke: var(--jeju); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.ln-jeju-y { fill: none; stroke: var(--actual); stroke-width: 1.8; stroke-dasharray: 4 3; stroke-linejoin: round; stroke-linecap: round; }
+.band { fill: var(--pred-wash); stroke: none; }
+.ref { stroke: var(--ink-4); stroke-width: 1; }
+.ev-c { fill: var(--s1); stroke: var(--surface); stroke-width: 2; }
+.ev-s { fill: var(--pos); stroke: var(--surface); stroke-width: 2; }
+.sel { stroke: var(--ink-1); stroke-width: 1; opacity: 0.45; }
+.hair { stroke: var(--ink-4); stroke-width: 1; }
+.dot-y { fill: var(--actual); stroke: var(--surface); stroke-width: 2; }
+.dot-p { fill: var(--pred); stroke: var(--surface); stroke-width: 2; }
+.dot-j { fill: var(--jeju); stroke: var(--surface); stroke-width: 2; }
+.bar-pos { fill: var(--pos); }
+.bar-neg { fill: var(--neg); }
+.bar-mae { fill: var(--mae); rx: 3px; }
+.hit { fill: transparent; cursor: crosshair; }
+.hit-click { cursor: pointer; }
+
+/* 하루 자세히 보기 */
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.day-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-top: 2px; }
+.sub-h { font-size: 15.5px; font-weight: 600; margin: 0 0 8px; color: var(--ink-1); }
+.stat-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0 20px; }
+.stat-card { border: 1px solid var(--glass-line); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--glass-2); }
+.sc-h { font-size: 13.5px; font-weight: 500; color: var(--ink-3); margin-bottom: 6px; }
+.sc-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; color: var(--ink-2); padding: 3px 0; }
+.sc-row + .sc-row { border-top: 1px solid var(--wash-2); }
+.sc-row b { color: var(--ink-1); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sc-row small { color: var(--ink-3); font-weight: 400; margin-left: 2px; }
+.day-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; }
+.warn-box { border: 1px solid var(--glass-line); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 10px; background: var(--glass-2); }
+.warn-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.warn-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.warn-main { font-size: 14.5px; color: var(--ink-2); }
+.warn-main b { font-weight: 600; color: var(--ink-1); }
+.warn-sub { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+/* 예측 근거 — 문장 | 막대 */
+.why-grid { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--grid); }
+.why-grid #contrib { margin-top: 14px; }
+.wf-total { font-weight: 600; fill: var(--ink-1); }
+.sentence { font-size: 15px; line-height: 1.7; margin: 0; padding: 12px 14px; background: var(--wash); border: 1px solid var(--glass-line); border-radius: var(--radius-sm); color: var(--ink-1); }
+.tk-why { fill: var(--why); font-size: 12.5px; font-weight: 600; }
+.fade { opacity: 0.32; }
+.chip { display: inline-block; font-size: 12.5px; font-weight: 500; color: var(--ink-2); background: rgba(255,255,255,0.7); border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(107,114,128,0.2); padding: 0 8px; margin-left: 4px; }
+
+/* 표 */
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 9px 12px; border-bottom: 1px solid var(--grid); text-align: left; vertical-align: top; }
+th { color: var(--ink-1); font-weight: 600; font-size: 13.5px; }
+td { color: var(--ink-2); }
+td b, td strong { color: var(--ink-1); }
+thead th { border-bottom-color: var(--border-strong); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.score td { vertical-align: middle; padding: 12px; }
+.fill-card { display: flex; flex-direction: column; } .fill-card .fill { flex: 1; } .fill-card table.score { height: 100%; }
+table.score .big { font-size: 20px; font-weight: 600; margin-right: 2px; color: var(--ink-1); }
+table.score .big.v-blue { color: var(--s1); }
+table.score .big.v-red { color: var(--pos); }
+.scroll { overflow-x: auto; }
+details summary { cursor: pointer; color: var(--ink-3); font-size: 14px; margin-top: 10px; }
+details summary:hover { color: var(--ink-1); }
+/* 사건 판정 결과 (발표용) */
+.jg-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.jg-head h2 { display: flex; align-items: center; gap: 8px; }
+.jg-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.jg-ctrl { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 14px 0 18px; padding: 12px 14px; background: var(--wash); border: 1px solid var(--glass-line); border-radius: var(--radius-sm); font-size: 14px; color: var(--ink-3); }
+.jg-ctrl label { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 500; }
+.jg-ctrl input[type=date] { padding: 4px 8px; }
+table.jg { margin-top: 4px; }
+.jg-box { margin-top: 16px; padding: 14px 16px 16px; background: var(--glass-2); border: 1px solid var(--glass-line); border-radius: var(--radius-sm); }
+.jg-box .sub-h { margin-bottom: 10px; font-weight: 800; }   /* 사건 판정 · 헛경보 제목 굵게 */
+.jg-frame { border: 1px solid var(--border-strong); border-radius: 10px; background: rgba(255,255,255,0.72); }
+table.jg-grid { margin-top: 0; border-collapse: collapse; border-style: hidden; }
+table.jg-grid th, table.jg-grid td { border: 1px solid var(--grid); }
+table.jg-grid thead th { background: rgba(241,245,249,0.92); border-bottom: 1px solid var(--border-strong); }
+table.jg-grid td.ev-name { background: rgba(248,250,252,0.9); }
+/* 사건 판정 표 — 첫 행(머리글)·첫 열(사건 이름) 글씨 크게 */
+#jg-t1 thead th { font-size: 15.5px; }
+#jg-t1 td.ev-name { font-size: 16px; }
+table.jg th, table.jg td { text-align: center; vertical-align: middle; padding: 10px 8px; font-variant-numeric: tabular-nums; }
+table.jg th:first-child, table.jg td.ev-name { text-align: left; }
+table.jg td.ev-name { font-weight: 600; color: var(--ink-1); }
+table.jg .cnt { font-size: 17px; font-weight: 600; color: var(--ink-1); }
+table.jg .rt { color: var(--ink-3); font-size: 13px; margin-left: 3px; }
+table.jg .sm { display: block; color: var(--ink-3); font-size: 12.5px; margin-top: 1px; }
+table.jg td.na { color: var(--ink-4); }
+.jg-meta { margin-top: 14px; font-size: 14px; color: var(--ink-3); line-height: 1.7; }
+.jg-meta .warn { color: #dc2626; }
+.jg-extra { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--grid); }
+.jg-extra h3 { margin: 0 0 2px; font-size: 15.5px; font-weight: 800; }
+.jg-extra .muted { margin-bottom: 10px; }
+.jg-cm-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.jg-cm-card { min-width: 0; border: 1px solid var(--glass-line); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--glass-2); }
+.jg-cm-card h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+table.jg-matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.45); }
+table.jg-matrix th, table.jg-matrix td { border: 0; border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); text-align: center; padding: 7px 4px; font-variant-numeric: tabular-nums; }
+table.jg-matrix tr > :last-child { border-right: 0; }
+table.jg-matrix tr:last-child > * { border-bottom: 0; }
+table.jg-matrix th { color: var(--ink-3); font-weight: 500; background: rgba(255,255,255,0.55); vertical-align: middle; }
+table.jg-matrix td b { display: block; font-size: 18px; font-weight: 600; color: var(--ink-1); }
+table.jg-matrix td small { color: var(--ink-3); }
+table.jg-matrix td.cm-hit { background: #fce7f3; }   /* 적중(대각선) 칸 — 연한 분홍 */
+.cm-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.cm-head h4 { margin: 0; }
+.jg-cm-card .cm-total { margin: 0 12px 0 0; white-space: nowrap; }   /* 오른쪽 끝에서 12px 안쪽 */
+@media (max-width: 900px) { .jg-cm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .jg-cm-grid { grid-template-columns: minmax(0, 1fr); } }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+ul.notes { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); word-break: keep-all; }
+ul.notes li { margin: 5px 0; }
+ul.notes li::marker { color: var(--ink-4); }
+.h-note { font-size: 14px; font-weight: 400; color: var(--ink-3); margin-left: 6px; }
+/* 가격 목표 판정 — 작은 칸 */
+.goal-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.goal { background: var(--glass-2); border: 1px solid var(--glass-line); border-radius: var(--radius-sm); padding: 14px 16px; }
+.goal .g-name { font-size: 14px; font-weight: 500; color: var(--ink-3); }
+.goal .g-val { font-size: 25px; font-weight: 500; margin: 4px 0 6px; letter-spacing: -0.02em; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.goal .g-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); padding-top: 8px; border-top: 1px solid var(--wash-2); }
+.guide-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; margin-top: 10px; }
+@media (max-width: 760px) { .goal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .guide-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+footer { margin-top: 28px; color: #1f3b5c; font-size: 13px; line-height: 1.7; }
+/* 데이터 없음 · 스크립트 꺼짐 안내 */
+.notice { margin-bottom: 16px; background: rgba(255,251,235,0.92); border-color: #fcd34d; color: #92400e; font-size: 14.5px; line-height: 1.7; }
+.notice b { color: #78350f; }
+.notice code { font-size: 12.5px; background: rgba(255,255,255,0.7); border-radius: 4px; padding: 1px 5px; }
+@media (max-width: 900px) { .day-grid, .two, .stat-cards { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) { .card { padding: 16px; } .card.tile { padding: 16px; } .tile .value { font-size: 28px; } h1 { font-size: 32px; } }
+/* 흐림 효과를 못 쓰는 브라우저 — 칸을 조금 더 불투명하게 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .card { background: rgba(255,255,255,0.88); } }
+/* 위쪽 메뉴 — 세 화면 (smp.today처럼 메뉴를 눌러 화면 전환) */
+.topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px 24px; }
+.nav { display: inline-flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: rgba(255,255,255,0.32); border: 1px solid rgba(255,255,255,0.6); border-radius: 999px;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 8px 24px -14px rgba(23,52,96,0.45); }
+.nav button { border: 0; box-shadow: none; background: transparent; border-radius: 999px; padding: 11px 26px; font-size: 17.5px; font-weight: 700; color: #0b2a4a; }
+.nav button:hover { background: rgba(255,255,255,0.45); }
+.nav button[aria-selected="true"] { background: #ffffff; box-shadow: 0 2px 8px -2px rgba(23,52,96,0.3); }
+.view[hidden], .seg-tabs[hidden] { display: none; }
+/* 하루 자세히 — 육지 | 제주 */
+.day-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; }
+#day-sec[data-region="land"] .jeju-only, #day-sec[data-region="jeju"] .land-only { display: none; }
+#jeju-forecast-status { margin-top: 6px; font-size: 13px; }
+/* 표로 보기 — 날짜 옆 버튼 → 팝업 */
+.day-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.tbl-btn { padding: 5px 12px; font-size: 13.5px; font-weight: 650; border: 0.5px solid #f5a623; background: rgba(255,209,102,0.12); }   /* 표로 보기 — 주황빛 테두리 + 아주 옅은 노란 바탕 */
+.tbl-btn:hover { background: rgba(255,209,102,0.24); }
+.tbl-dlg { padding: 0; border: 1px solid var(--glass-line); border-radius: 18px; width: min(780px, 94vw); max-height: 86vh; overflow: hidden;
+  background: rgba(255,255,255,0.97); color: var(--ink-1); box-shadow: 0 28px 70px -24px rgba(15,23,42,0.5); }
+.tbl-dlg::backdrop { background: rgba(15,23,42,0.38); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.dlg-inner { padding: 18px 20px 20px; }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.dlg-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.dlg-close { width: 34px; height: 34px; padding: 0; border-radius: 999px; font-size: 20px; line-height: 1; }
+.dlg-body { max-height: calc(86vh - 96px); overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.dlg-body table { border-collapse: separate; border-spacing: 0; }
+.dlg-body thead th { position: sticky; top: 0; z-index: 1; background: #f1f5f9; }
+.dlg-body tbody tr:nth-child(even) td { background: rgba(241,245,249,0.5); }
+.view > section:first-child { margin-top: 0; }
+@media (max-width: 520px) { .nav { width: 100%; justify-content: space-between; } .nav button { padding: 9px 12px; font-size: 15px; } }
+/* 월별 달력 */
+.cal-months { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; }
+.cal-month { background: var(--glass-2); border: 1px solid var(--glass-line); border-radius: var(--radius-sm); padding: 10px 12px 12px; min-width: 0; }
+.cal-mh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; font-size: 15px; }
+.cal-mh span { font-size: 12.5px; color: var(--ink-3); }
+.cal-month svg { display: block; width: 100%; height: auto; }
+.cal-dn { font-size: 9.5px; fill: var(--ink-2); pointer-events: none; font-variant-numeric: tabular-nums; }
+.cal-dn.on-dark { fill: #ffffff; }
+.tk-we { fill: #b45309; }
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<div class="sky" aria-hidden="true">
+  <svg class="scene" viewBox="0 0 1400 300" preserveAspectRatio="xMidYMin slice">
+    <defs>
+      <radialGradient id="sunGlow"><stop offset="0" stop-color="#fff6d6" stop-opacity="0.95"/><stop offset="1" stop-color="#fff6d6" stop-opacity="0"/></radialGradient>
+      <linearGradient id="wireFade" x1="0" x2="1"><stop offset="0" stop-color="#25456b" stop-opacity="0"/><stop offset="1" stop-color="#25456b" stop-opacity="0.5"/></linearGradient>
+    </defs>
+    <path d="M900 174 C 1000 164 1120 168 1230 162 S 1360 166 1400 164 L1400 300 L900 300 Z" fill="#ffffff" opacity="0.22"/>
+    <path class="wires" d="M872.7 87.9 Q957.7 99.9 1042.7 81.9 M865.9 107.0 Q950.9 119.0 1035.9 101.0 M937.3 87.9 Q1022.3 99.9 1107.3 81.9 M944.1 107.0 Q1029.1 119.0 1114.1 101.0" stroke="url(#wireFade)"/>
+    <path class="wires" d="M1042.7 81.9 Q1113.1 114.7 1183.4 98.7 M1035.9 101.0 Q1106.8 130.4 1177.8 114.4 M1107.3 81.9 Q1171.9 114.7 1236.6 98.7 M1114.1 101.0 Q1178.2 130.4 1242.2 114.4 M1183.4 98.7 Q1245.8 129.8 1308.2 113.8 M1177.8 114.4 Q1240.7 142.4 1303.5 126.4 M1236.6 98.7 Q1294.2 129.8 1351.8 113.8 M1242.2 114.4 Q1299.3 142.4 1356.5 126.4 M1308.2 113.8 Q1368.2 127.8 1428.2 115.8 M1303.5 126.4 Q1363.5 140.4 1423.5 128.4 M1351.8 113.8 Q1411.8 127.8 1471.8 115.8 M1356.5 126.4 Q1416.5 140.4 1476.5 128.4"/>
+    <path class="tower" d="M1058.0 172 L1071.0 74.0 L1075.0 60.0 L1079.0 74.0 L1092.0 172 M1068.9 74.0 L1084.1 93.6 M1081.1 74.0 L1065.9 93.6 M1065.9 93.6 L1084.1 93.6 M1065.9 93.6 L1087.1 113.2 M1084.1 93.6 L1062.9 113.2 M1062.9 113.2 L1087.1 113.2 M1062.9 113.2 L1090.0 132.8 M1087.1 113.2 L1060.0 132.8 M1060.0 132.8 L1090.0 132.8 M1060.0 132.8 L1093.0 152.4 M1090.0 132.8 L1057.0 152.4 M1057.0 152.4 L1093.0 152.4 M1057.0 152.4 L1096.0 172.0 M1093.0 152.4 L1054.0 172.0 M1054.0 172.0 L1096.0 172.0 M1042.7 77.9 L1107.3 77.9 M1042.7 77.9 L1068.3 84.9 M1107.3 77.9 L1081.7 84.9 M1035.9 97.0 L1114.1 97.0 M1035.9 97.0 L1065.4 104.0 M1114.1 97.0 L1084.6 104.0 M1196.0 172 L1206.0 94.0 L1210.0 80.0 L1214.0 94.0 L1224.0 172 M1203.9 94.0 L1218.5 109.6 M1216.1 94.0 L1201.5 109.6 M1201.5 109.6 L1218.5 109.6 M1201.5 109.6 L1220.9 125.2 M1218.5 109.6 L1199.1 125.2 M1199.1 125.2 L1220.9 125.2 M1199.1 125.2 L1223.3 140.8 M1220.9 125.2 L1196.7 140.8 M1196.7 140.8 L1223.3 140.8 M1196.7 140.8 L1225.6 156.4 M1223.3 140.8 L1194.4 156.4 M1194.4 156.4 L1225.6 156.4 M1194.4 156.4 L1228.0 172.0 M1225.6 156.4 L1192.0 172.0 M1192.0 172.0 L1228.0 172.0 M1183.4 94.7 L1236.6 94.7 M1183.4 94.7 L1203.8 101.7 M1236.6 94.7 L1216.2 101.7 M1177.8 110.4 L1242.2 110.4 M1177.8 110.4 L1201.4 117.4 M1242.2 110.4 L1218.6 117.4 M1318.5 172 L1326.0 112.0 L1330.0 98.0 L1334.0 112.0 L1341.5 172 M1323.8 112.0 L1338.0 124.0 M1336.2 112.0 L1322.0 124.0 M1322.0 124.0 L1338.0 124.0 M1322.0 124.0 L1339.9 136.0 M1338.0 124.0 L1320.1 136.0 M1320.1 136.0 L1339.9 136.0 M1320.1 136.0 L1341.8 148.0 M1339.9 136.0 L1318.2 148.0 M1318.2 148.0 L1341.8 148.0 M1318.2 148.0 L1343.6 160.0 M1341.8 148.0 L1316.4 160.0 M1316.4 160.0 L1343.6 160.0 M1316.4 160.0 L1345.5 172.0 M1343.6 160.0 L1314.5 172.0 M1314.5 172.0 L1345.5 172.0 M1308.2 109.8 L1351.8 109.8 M1308.2 109.8 L1324.2 116.8 M1351.8 109.8 L1335.8 116.8 M1303.5 122.4 L1356.5 122.4 M1303.5 122.4 L1322.2 129.4 M1356.5 122.4 L1337.8 129.4"/>
+  </svg>
+  <svg class="sun" viewBox="0 0 240 210" aria-hidden="true">
+    <defs><radialGradient id="sunGlowL"><stop offset="0" stop-color="#fff6d6" stop-opacity="0.95"/><stop offset="1" stop-color="#fff6d6" stop-opacity="0"/></radialGradient></defs>
+    <g transform="translate(-50 0)">
+      <circle class="sun-glow" cx="170" cy="88" r="115" fill="url(#sunGlowL)"/>
+      <path class="sun-rays" d="M230.0 88.0 L246.0 88.0 M222.0 118.0 L235.8 126.0 M200.0 140.0 L208.0 153.8 M170.0 148.0 L170.0 164.0 M140.0 140.0 L132.0 153.8 M118.0 118.0 L104.2 126.0 M110.0 88.0 L94.0 88.0 M118.0 58.0 L104.2 50.0 M140.0 36.0 L132.0 22.2 M170.0 28.0 L170.0 12.0 M200.0 36.0 L208.0 22.2 M222.0 58.0 L235.8 50.0"/>
+      <circle cx="170" cy="88" r="42" fill="#ffd166"/>
+      <circle cx="170" cy="88" r="42" fill="none" stroke="#ffe39a" stroke-width="6" opacity="0.7"/>
+    </g>
+  </svg>
+</div>
+<div class="wrap">
+  <header>
+    <div class="topbar">
+      <h1>SMP Forecast</h1>
+      <nav class="nav" role="tablist" aria-label="화면 선택">
+        <button type="button" role="tab" id="tab-overview" aria-controls="view-overview" data-view="overview">한눈에 보기</button>
+        <button type="button" role="tab" id="tab-day" aria-controls="view-day" data-view="day">하루 자세히</button>
+        <button type="button" role="tab" id="tab-score" aria-controls="view-score" data-view="score">성적과 기준</button>
+      </nav>
+    </div>
+    <div class="meta" id="period"></div>
+  </header>
+
+  <noscript><div class="card notice"><b>스크립트가 꺼져 있어 화면 틀만 보입니다.</b><br>
+    편집기 미리보기처럼 자바스크립트를 막는 창에서는 결과가 그려지지 않습니다. Chrome·Safari 같은 브라우저로 여세요.</div></noscript>
+  <div class="view" id="view-overview" role="tabpanel" aria-labelledby="tab-overview">
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <div class="sec-head">
+      <div>
+        <h2>일자별 평균 가격</h2>
+        <div class="muted">그래프에서 날짜를 누르면 「하루 자세히」에서 그날을 볼 수 있습니다</div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="key-line" style="background:var(--actual)"></i>실적</span>
+      <span><i class="key-line" style="background:var(--pred)"></i>예측</span>
+      <span><i class="key-dot" style="background:var(--s1)"></i>실제 급락일</span>
+      <span><i class="key-dot" style="background:var(--pos)"></i>급등 구간이 있는 날</span>
+    </div>
+    <div class="chart" id="overview"></div>
+  </section>
+
+  <section class="card">
+    <div class="sec-head">
+      <div>
+        <h2>월별 달력</h2>
+        <div class="muted">칸 색이 진할수록 그날 예측이 많이 빗나간 날입니다 · 날짜를 누르면 「하루 자세히」에서 그날을 볼 수 있습니다</div>
+      </div>
+      <div class="seg-tabs" id="cal-years" role="group" aria-label="연도 선택"></div>
+    </div>
+    <div class="legend" id="cal-legend"></div>
+    <div class="scroll"><div class="chart" id="calendar"></div></div>
+  </section>
+
+  </div>
+
+  <div class="view" id="view-day" role="tabpanel" aria-labelledby="tab-day">
+  <section class="card" id="day-sec" data-region="land">
+    <div class="sec-head">
+      <h2>하루 자세히 보기</h2>
+      <div class="seg-tabs" id="day-region" role="group" aria-label="지역 선택">
+        <button type="button" data-r="land" aria-pressed="true">육지</button>
+        <button type="button" data-r="jeju" aria-pressed="false">제주</button>
+      </div>
+    </div>
+    <div class="day-head">
+      <div class="day-title-row">
+        <div class="day-title" id="d-title"></div>
+        <button type="button" id="d-table-open" class="tbl-btn" aria-haspopup="dialog">표로 보기</button>
+      </div>
+      <div class="controls">
+        <button type="button" id="prev" aria-label="전날">◀</button>
+        <input type="date" id="pick" aria-label="날짜">
+        <button type="button" id="next" aria-label="다음 날">▶</button>
+        <select id="jump" aria-label="실제 사건일로 이동"></select>
+      </div>
+    </div>
+    <div class="stat-cards land-only">
+      <div class="stat-card" id="d-stats"></div>
+      <div class="stat-card" id="d-dem"></div>
+      <div class="stat-card" id="d-pv"></div>
+    </div>
+    <div class="stat-cards jeju-only">
+      <div class="stat-card" id="j-stats"></div>
+      <div class="stat-card" id="j-zero"></div>
+      <div class="stat-card" id="j-vs"></div>
+    </div>
+    <div class="day-grid">
+      <div>
+        <div class="land-only">
+          <div class="legend">
+            <span><i class="key-line" style="background:var(--actual)"></i>실적</span>
+            <span><i class="key-line" style="background:var(--pred)"></i>예측</span>
+            <span><i class="key-band"></i>80% 예측 범위</span>
+            <span><i class="key-line key-dash" style="border-color:var(--pos)"></i>급등 기준(같은 시각 28일 중앙값+20원)</span>
+          </div>
+          <div class="chart" id="daychart"></div>
+        </div>
+        <div class="jeju-only">
+          <div class="legend">
+            <span><i class="key-line" style="background:var(--actual)"></i>제주 실적</span>
+            <span><i class="key-line" style="background:var(--jeju)"></i>제주 예측</span>
+            <span><i class="key-line" style="background:var(--ink-4);height:1px"></i>급락 기준 0원</span>
+          </div>
+          <div class="chart" id="jeju-forecast-chart"></div>
+          <div class="muted" id="jeju-forecast-status" role="status"></div>
+        </div>
+      </div>
+      <div>
+        <h3 class="sub-h" id="d-warn-title">육지 급락·급등 경보</h3>
+        <div id="d-warn"></div>
+      </div>
+    </div>
+    <div class="why-grid land-only">
+      <div>
+        <h3 class="sub-h">예측 근거</h3>
+        <div class="sentence" id="d-sent"></div>
+      </div>
+      <div class="chart" id="contrib"></div>
+    </div>
+    <dialog id="d-table-dlg" class="tbl-dlg" aria-labelledby="d-table-title">
+      <div class="dlg-inner">
+        <div class="dlg-head">
+          <h3 id="d-table-title">시간별 표</h3>
+          <button type="button" class="dlg-close" id="d-table-close" aria-label="닫기">×</button>
+        </div>
+        <div class="dlg-body">
+          <div class="land-only"><table id="d-table"></table></div>
+          <div class="jeju-only"><table id="jeju-forecast-table"></table></div>
+        </div>
+      </div>
+    </dialog>
+  </section>
+
+  </div>
+
+  <div class="view" id="view-score" role="tabpanel" aria-labelledby="tab-score">
+  <section class="card" id="judge-sec">
+    <div class="jg-head">
+      <h2>사건 판정 결과</h2>
+      <div class="jg-tools">
+        <button type="button" id="jg-csv">CSV 내려받기</button>
+        <button type="button" id="jg-copy">표 복사</button>
+        <span class="muted" id="jg-msg" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="jg-ctrl">
+      <label>모델 <span class="seg-tabs" id="jg-model">
+        <button type="button" data-m="prob" aria-pressed="true">확률(경보) 모델</button>
+        <button type="button" data-m="price" aria-pressed="false">가격 모델</button></span></label>
+      <label>시험 기간 <input type="date" id="jg-from"> ~ <input type="date" id="jg-to"></label>
+      <button type="button" id="jg-reset">기본값</button>
+    </div>
+    <div class="jg-box">
+      <h3 class="sub-h">사건 판정 <small class="h-note">각 칸: 건수(비율)</small></h3>
+      <div class="scroll jg-frame"><table id="jg-t1" class="jg jg-grid"></table></div>
+    </div>
+    <div class="jg-box">
+      <h3 class="sub-h">헛경보 <small class="h-note" id="jg-t2note"></small></h3>
+      <div class="scroll jg-frame"><table id="jg-t2" class="jg jg-grid"></table></div>
+    </div>
+    <div class="jg-meta" id="jg-meta"></div>
+    <div class="jg-extra">
+      <h3>실제 발생일과 예측일 비교</h3>
+      <div class="muted" id="jg-cm-note"></div>
+      <div class="jg-cm-grid" id="jg-confusion"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>가격 목표 판정 <small class="h-note" id="t-note"></small></h2>
+    <div class="goal-grid" id="targets"></div>
+    <div class="muted" id="t-band" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <h2>월별 성적</h2>
+    <div class="legend">
+      <span><i class="key-sq" style="background:var(--mae)"></i>평균 오차 (MAE)</span>
+      <span><i class="key-line" style="background:var(--ink-3);height:1px"></i>목표 7.0원</span>
+    </div>
+    <div class="chart" id="monthly"></div>
+  </section>
+
+  <section class="card">
+    <h2>판정 기준과 읽는 법</h2>
+    <div class="guide-grid">
+      <div><h3 class="sub-h">판정 기준</h3><ul class="notes" id="ev-rules"></ul></div>
+      <div><h3 class="sub-h">읽을 때 주의</h3><ul class="notes" id="ev-notes"></ul></div>
+    </div>
+  </section>
+
+  </div>
+
+  <footer>
+    한국중부발전(주) 동반성장부 SMP 예측 프로그램 기반 · 교육·연구 목적 · 팀 내부 공유 전용(외부 재배포 금지)<br>
+    데이터 출처: 한국전력거래소·기상청·한국천문연구원(공공데이터포털)
+  </footer>
+</div>
+
+<script>
+const D = /*__DATA__*/null;
+if (!D) {   // 템플릿을 그대로 열었을 때 — 결과 데이터가 없으므로 안내만 띄우고 멈춤
+  const n = document.createElement("div");
+  n.className = "card notice";
+  n.innerHTML = "<b>결과 데이터가 들어 있지 않은 템플릿 파일입니다.</b> 그래서 화면 틀만 보입니다.<br>" +
+    "<code>python experiments/ensemble/build_my_dashboard.py</code>로 만든 <code>outputs/ensemble/my_dashboard.html</code>을 브라우저로 여세요.";
+  document.getElementById("tiles").before(n);
+  throw new Error("my_dashboard_template.html 에는 데이터가 없습니다 — outputs/ensemble/my_dashboard.html 을 여세요");
+}
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+function s(tag, attrs, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function txt(parent, x, y, str, cls, anchor) {
+  const t = s("text", { x, y, class: cls || "tk", "text-anchor": anchor || "middle" }, parent);
+  t.textContent = str;
+  return t;
+}
+const f1 = v => v == null ? "–" : v.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const f2 = v => v == null ? "–" : v.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sg = v => (v > 0 ? "+" : v < 0 ? "−" : "") + f1(Math.abs(v));
+const pct = v => (v * 100).toFixed(1) + "%";
+const mw = v => v == null ? "–" : Math.round(v).toLocaleString("ko-KR");
+const kdate = d => { const [y, m, dd] = d.split("-"); return `${y}. ${+m}. ${+dd}.`; };
+const mean = a => { const v = a.filter(x => x != null); return v.length ? v.reduce((p, c) => p + c, 0) / v.length : null; };
+function niceTicks(lo, hi, n) {
+  const step0 = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(st => st >= step0);
+  const out = [];
+  const top = Math.ceil(hi / step - 1e-9) * step;
+  for (let v = Math.floor(lo / step) * step; v <= top + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+function badge(level) { const ic = { 경보: "▲", 주의: "!", 정상: "✓" }[level]; return `<span class="badge b-${level}"><i>${ic}</i>${level}</span>`; }
+function tipAt(tip, box, x, y, html) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight, W = box.clientWidth, H = box.clientHeight;
+  tip.style.left = Math.max(0, Math.min(W - w, x + 14 > W - w ? x - w - 14 : x + 14)) + "px";
+  tip.style.top = (y - 10 + h > H ? Math.max(0, y - h - 12) : Math.max(0, y - 10)) + "px";   // 아래가 모자라면 커서 위로
+}
+
+const days = D.days, idxOf = {};
+days.forEach((d, i) => { idxOf[d.d] = i; d.my = mean(d.y); d.mp = mean(d.p); });
+const jejuByDate = Object.fromEntries(((D.jejuForecast && D.jejuForecast.days) || []).map(x => [x.d, x]));
+function drawJejuForecast() {
+  // 「제주」 화면 — 위쪽에서 고른 날짜(cur)의 제주 24시간 예측·실적과 숫자 칸 3개
+  const F = D.jejuForecast, box = $("jeju-forecast-chart");
+  const table = $("jeju-forecast-table"), status = $("jeju-forecast-status");
+  box.innerHTML = ""; table.innerHTML = "";
+  const day = days[cur], d = jejuByDate[day.d];
+  const card = (title, rows) => `<div class="sc-h">${title}</div>` + rows.map(([k, v]) => `<div class="sc-row"><span>${k}</span>${v}</div>`).join("");
+  if (!F || !F.available || !d) {
+    ["j-stats", "j-zero", "j-vs"].forEach(id => $(id).innerHTML = card(id === "j-stats" ? "제주 가격" : id === "j-zero" ? "0원 이하 시간" : "육지와 비교", [["자료", "<b>없음</b>"]]));
+    status.textContent = !F || !F.available
+      ? "연결된 제주 시간별 예측 이력이 없습니다. scripts/step6_predict.py로 제주 예측을 산출하면 outputs/predict/predictions_smp_jeju.csv의 예측을 여기에 표시합니다."
+      : `${kdate(day.d)}: 이 날짜의 제주 예측 자료가 없습니다.`;
+    return;
+  }
+  const ok = v => v != null && Number.isFinite(v);
+  const ys = d.y.filter(ok), ps = d.p.filter(ok), hasY = ys.length > 0;
+  const zh = a => a.map((v, i) => ok(v) && v <= 0 ? i + 1 : 0).filter(Boolean);
+  const span = hs => hs.reduce((o, h) => { const l = o[o.length - 1]; if (l && h === l[1] + 1) l[1] = h; else o.push([h, h]); return o; }, [])
+    .map(([x, y]) => x === y ? `${x}시` : `${x}~${y}시`).join(", ");
+  const hy = zh(d.y), hp = zh(d.p);
+  const err = mean(d.y.map((y, i) => ok(y) && ok(d.p[i]) ? Math.abs(d.p[i] - y) : null));
+  const lo = hasY ? Math.min(...ys) : null, loH = hasY ? d.y.indexOf(lo) + 1 : 0;
+  $("j-stats").innerHTML = card("제주 가격", [["평균 실적", `<b>${hasY ? f1(mean(d.y)) + "원" : "없음"}</b>`], ["평균 예측", `<b>${f1(mean(d.p))}원</b>`],
+    ["그날 평균 오차", `<b>${err == null ? "–" : f2(err) + "원"}</b>`]]);
+  $("j-zero").innerHTML = card("0원 이하 시간 (제주 급락 기준)", [
+    ["실적", `<b>${hasY ? hy.length + "시간" : "없음"}${hy.length ? `<small>(${span(hy)})</small>` : ""}</b>`],
+    ["예측", `<b>${hp.length}시간${hp.length ? `<small>(${span(hp)})</small>` : ""}</b>`],
+    ["최저 실적", `<b>${hasY ? `${f1(lo)}원<small>(${loH}시)</small>` : "없음"}</b>`]]);
+  const jm = hasY ? mean(d.y) : null, lm = day.my;
+  $("j-vs").innerHTML = card("육지와 비교", [["육지 평균 실적", `<b>${lm == null ? "없음" : f1(lm) + "원"}</b>`],
+    ["제주 평균 실적", `<b>${jm == null ? "없음" : f1(jm) + "원"}</b>`],
+    ["차이 (제주 − 육지)", `<b>${jm == null || lm == null ? "–" : sg(jm - lm) + "원"}</b>`]]);
+  status.textContent = hasY ? "" : "아직 제주 실적 없음";   // 예측 출처 문구는 표시하지 않음
+  const vals = [...ps, ...ys, 0];
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if (min === max) { min -= 1; max += 1; }
+  const W = Math.max(320, box.clientWidth), H = 262, m = { l: 44, r: 12, t: 18, b: 28 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const ticks = niceTicks(min, max, 5), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const X = h => m.l + (h - 1) * iw / 23, Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
+    "aria-label": `${kdate(d.d)} 제주 SMP 시간별 예측 및 실적` }, box);
+  txt(svg, 0, 9, "원/kWh", "tk", "start");
+  ticks.forEach(tv => {
+    s("line", { x1: m.l, x2: W - m.r, y1: Y(tv), y2: Y(tv), class: tv === y0 ? "ax" : "gl" }, svg);
+    txt(svg, m.l - 6, Y(tv) + 4, tv, "tk", "end");
+  });
+  s("line", { x1: m.l, x2: W - m.r, y1: Y(0), y2: Y(0), class: "ref" }, svg);           // 제주 급락 기준 0원
+  txt(svg, W - m.r, Y(0) - 5, "급락 기준 0원", "tk", "end");
+  [1, 4, 8, 12, 16, 20, 24].forEach(h => txt(svg, X(h), H - 8, h + "시"));
+  const line = values => {
+    let path = "", pen = false;
+    values.forEach((v, i) => {
+      if (!ok(v)) { pen = false; return; }
+      path += (pen ? "L" : "M") + X(i + 1).toFixed(1) + " " + Y(v).toFixed(1);
+      pen = true;
+    });
+    return path;
+  };
+  s("path", { d: line(d.y), class: "ln-y" }, svg);
+  s("path", { d: line(d.p), class: "ln-jeju" }, svg);
+  // 마우스를 올리면 그 시각의 제주 실적·예측 (육지 그래프와 같은 방식)
+  const hair = s("line", { y1: m.t, y2: m.t + ih, class: "hair", visibility: "hidden" }, svg);
+  const dy = s("circle", { r: 4, class: "dot-y", visibility: "hidden" }, svg);
+  const dp = s("circle", { r: 4, class: "dot-j", visibility: "hidden" }, svg);
+  const tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip);
+  const hit = s("rect", { x: m.l - 8, y: m.t, width: iw + 16, height: ih, class: "hit" }, svg);
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width;
+    const h = Math.max(1, Math.min(24, Math.round((x - m.l) / iw * 23) + 1)), i = h - 1;
+    hair.setAttribute("x1", X(h)); hair.setAttribute("x2", X(h)); hair.setAttribute("visibility", "visible");
+    [[dy, d.y[i]], [dp, d.p[i]]].forEach(([dot, v]) => {
+      if (ok(v)) { dot.setAttribute("cx", X(h)); dot.setAttribute("cy", Y(v)); dot.setAttribute("visibility", "visible"); } else dot.setAttribute("visibility", "hidden");
+    });
+    const zero = [ok(d.y[i]) && d.y[i] <= 0 ? "실적 0원 이하" : "", ok(d.p[i]) && d.p[i] <= 0 ? "예측 0원 이하" : ""].filter(Boolean).join(" · ");
+    tipAt(tip, box, X(h) * box.clientWidth / W, Y(ok(d.p[i]) ? d.p[i] : ok(d.y[i]) ? d.y[i] : 0) * box.clientWidth / W,
+      `<b>${h}시</b>
+       <div class="row"><i class="key-line" style="background:var(--actual)"></i>제주 실적<em>${f2(d.y[i])}원</em></div>
+       <div class="row"><i class="key-line" style="background:var(--jeju)"></i>제주 예측<em>${f2(d.p[i])}원</em></div>
+       ${zero ? `<div class="muted">${zero} (급락 기준)</div>` : ""}
+       <div class="row" style="margin-top:4px">육지 실적<em>${f2(day.y[i])}원</em></div>`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; [hair, dy, dp].forEach(n => n.setAttribute("visibility", "hidden")); });
+  const rows = Array.from({ length: 24 }, (_, i) =>
+    `<tr><td>${i + 1}시</td><td class="n">${f2(d.p[i])}</td><td class="n">${f2(d.y[i])}</td></tr>`).join("");
+  table.innerHTML = `<thead><tr><th>거래시간</th><th class="n">제주 예측 (원/kWh)</th><th class="n">제주 실적 (원/kWh)</th></tr></thead><tbody>${rows}</tbody>`;
+}
+const evC = new Set(D.evDays.c.concat(D.evDays.cw)), evS = new Set(D.evDays.s);   // 시간 구간 사건이 있는 날 (events.py)
+const jumpSet = new Set([...evC, ...evS, ...D.evDays.j]);
+let cur = days.length - 1;
+
+/* ---------- 머리글 · 성적 카드 ---------- */
+const E = D.ev, ES = E.set, ET = E.periods.test;
+const IH = ES.issue_hour, testName = ET.name;
+$("period").innerHTML = ["D+1 시간별 육지 SMP",                 // 머리 띠: D+1 · 학습 · 시험 세 개만
+  `학습 ${kdate(ES.train[0])} ~ ${kdate(ES.train[1])}`, `${testName} ${kdate(ES.test[0])} ~ ${kdate(ES.test[1])}`].map(t => `<span>${t}</span>`).join("");
+const C = Object.fromEntries(D.cnt.map(c => [c.task, c]));
+const pm = D.pm, cr = C["급락"], sp = C["급등+25%"];
+// 최근 4주 예측근거 — 6개 묶음별 평균 |기여| (다른 모델 보정 제외)
+const eDates = Object.keys(D.expl).sort(), recent = eDates.slice(-28);
+const recentImpact = D.parts.slice(0, 6).map((name, j) => [name, mean(recent.map(d => Math.abs(D.expl[d].parts[j] ?? 0)))])
+  .sort((a, b) => b[1] - a[1]);
+const tile = ([l, v, u, n, c, b]) => `<div class="card tile"><div class="label"><span><i class="cat"></i>${l}</span>${b || ""}</div><div class="value">${v}<small>${u}</small></div>${n ? `<div class="note">${n}</div>` : ""}<div class="crit">${c}</div></div>`;
+// 시험 구간 · 시간 구간 기준 (events.py). 급락 = 휴일 구간(평일은 성적표에서 따로), 급등 = 휴일+평일
+const ch = ET.crash["휴일"], cwd = ET.crash["평일"];
+const sumW = k => ["성공", "부분", "실패", "예측 없음"].reduce((o, j) => (o[j] = ET[k]["휴일"]["경보"][j] + ET[k]["평일"]["경보"][j], o), {});
+const spk = sumW("spike"), spN = ET.spike["휴일"]["구간"] + ET.spike["평일"]["구간"];
+const spFA = ET.spike["휴일"]["헛경보_경보일"] + ET.spike["평일"]["헛경보_경보일"], spFW = ET.spike["휴일"]["헛경보_주의일"] + ET.spike["평일"]["헛경보_주의일"];
+const cW = ch["경보"];
+const lvRow = (badge, tp, n, note, cls = "v-blue") => `<div class="lv">${badge}<div class="value"><span class="${cls}">${tp}/${n}</span><small>구간</small></div><div class="note">${note}</div></div>`;
+const WATCH = `<span class="badge b-주의"><i>!</i>주의 이상</span>`, ALARM = `<span class="badge b-경보"><i>▲</i>경보</span>`;
+// 육지 급락은 「경보」 한 단계(교체판 warnings_crash.py) — 주의가 하나도 없으면 경보 줄만
+const crashOne = cW["부분"] === 0 && ch["헛경보_주의일"] === 0;
+const cat = c => `<i class="cat"></i>`;     // 칸 제목 앞 점 — 모두 제목(SMP Forecast) 글자색
+const crashTile = `<div class="card tile crash2"><div class="label"><span>${cat("--s1")}육지 급락 경보</span></div>` +
+  (crashOne ? "" : lvRow(`<span class="badge b-주의"><i>!</i>주의 이상</span>`, cW["성공"] + cW["부분"], ch["구간"], `헛경보 ${ch["헛경보_경보일"] + ch["헛경보_주의일"]}일 · 놓침 ${cW["실패"] + cW["예측 없음"]}구간`)) +
+  lvRow(`<span class="badge b-경보"><i>▲</i>경보</span>`, cW["성공"], ch["구간"], `헛경보 ${ch["헛경보_경보일"]}일 · 놓침 ${cW["부분"] + cW["실패"] + cW["예측 없음"]}구간`) +
+  `<div class="crit">11~15시 &lt; ${ES.land_crash_won}원 · 전날 ${IH.crash}시${crashOne ? "<br>경보 한 단계 · 평일은 경보 안 냄" : ""}</div></div>`;
+// 제주 급락 — 같은 형식 (휴일+평일, 제주 SMP ≤ 0원)
+const EJ = ET.jeju, jW = ["성공", "부분", "실패", "예측 없음"].reduce((o, j) => (o[j] = EJ["휴일"]["경보"][j] + EJ["평일"]["경보"][j], o), {});
+const jN = EJ["휴일"]["구간"] + EJ["평일"]["구간"], jFA = EJ["휴일"]["헛경보_경보일"] + EJ["평일"]["헛경보_경보일"], jFW = EJ["휴일"]["헛경보_주의일"] + EJ["평일"]["헛경보_주의일"];
+const jejuOne = jW["부분"] === 0 && jFW === 0;                 // v2: 경보 한 단계
+const jejuTile = `<div class="card tile crash2"><div class="label"><span>${cat("--jeju")}제주 급락 경보</span></div>` +
+  (jejuOne ? "" : lvRow(WATCH, jW["성공"] + jW["부분"], jN, `헛경보 ${jFA + jFW}일 · 놓침 ${jW["실패"] + jW["예측 없음"]}구간`)) +
+  lvRow(ALARM, jW["성공"], jN, `헛경보 ${jFA}일 · 놓침 ${jW["부분"] + jW["실패"] + jW["예측 없음"]}구간`) +
+  `<div class="crit">제주 SMP ≤ 0원 · 전날 ${IH.crash}시${jejuOne ? "<br>경보 한 단계" : ""}</div></div>`;
+// 급등 — 급락과 같은 형식, 위: 주의 이상, 아래: 경보 (휴일+평일)
+const spikeTile = `<div class="card tile crash2"><div class="label"><span>${cat("--pos")}육지 급등 경보</span></div>` +
+  lvRow(WATCH, spk["성공"] + spk["부분"], spN, `헛경보 ${spFA + spFW}일 · 놓침 ${spk["실패"] + spk["예측 없음"]}구간`, "v-red") +
+  lvRow(ALARM, spk["성공"], spN, `헛경보 ${spFA}일 · 놓침 ${spk["부분"] + spk["실패"] + spk["예측 없음"]}구간`, "v-red") +
+  `<div class="crit">같은 시각 28일 중앙값+${ES.spike_add_won}원 · 전날 ${IH.spike}시</div></div>`;
+const groups = [
+  ["warn3", crashTile, spikeTile, jejuTile],
+  ["n2", ["가격 예측 · 평균 오차", `<span class="v-mae">${f2(pm.mae)}</span>`, "원", "", "MAE 목표 ≤ 7.0원"],
+   ["80% 예측 범위", `<span class="v-cover">${pm.cover.toFixed(1)}</span>`, "%", "", `평균 폭 ${f1(pm.width)}원<br>이전 52% → ${pm.cover.toFixed(1)}%`]],
+];
+// 예측근거 — 1~3위 영향 요인, 막대 길이 = 1위 대비 영향 크기
+const impMax = Math.max(...recentImpact.slice(0, 3).map(([, v]) => v), 1e-9);
+const rankTile = `<div class="card tile"><div class="label"><span><i class="cat"></i>예측근거</span></div><div class="bar-list">` +
+  recentImpact.slice(0, 3).map(([name, v], i) => `<div class="bl-row"><div class="bl-bar" style="width:${Math.max(6, v / impMax * 100).toFixed(1)}%"></div>` +
+    `<span class="bl-name"><span class="rk">${i + 1}위</span>${name}</span><span class="bl-val">±${f1(v)}원</span></div>`).join("") +
+  `</div><div class="crit">최근 4주 평균 영향 크기</div></div>`;
+$("tiles").innerHTML = groups.map(([cls, ...g]) => `<div class="tile-group ${cls}">${g.map(x => typeof x === "string" ? x : tile(x)).join("")}</div>`).join("") +
+  `<div class="tile-group n1">${rankTile}</div>`;
+
+/* ---------- 달력 히트맵 — 칸 색 = 그날 평균 오차, 점 = 실제 급락·급등 ---------- */
+const CAL_BINS = [4, 7, 10, 15];                               // 원 — 4 미만 / 4~7 / 7~10 / 10~15 / 15 이상
+const CAL_RAMP = ["#f3f4f6", "#d1d5db", "#9ca3af", "#6b7280", "#374151"];   // 회색 단계 (gray-100 → 700)
+const dayErr = d => mean(d.y.map((y, i) => y == null ? null : Math.abs(d.p[i] - y)));
+function drawCalendar() {
+  const box = $("calendar"); box.innerHTML = "";
+  const host = box.closest(".card"); host.querySelector(".tip")?.remove();     // 스크롤 칸에 잘리지 않게 카드에 붙임
+  const tip = document.createElement("div"); tip.className = "tip"; host.appendChild(tip);
+  const cell = 24, gap = 3, pitch = cell + gap, top = 20, W = 7 * pitch - gap, H = top + 6 * pitch - gap;
+  const months = [];                                              // 월별 날짜 번호 묶음
+  days.forEach((d, i) => { const ym = d.d.slice(0, 7); if (!months.length || months[months.length - 1].ym !== ym) months.push({ ym, idx: [] }); months[months.length - 1].idx.push(i); });
+  const where = {};                                               // 날짜 번호 → [그 달 svg, x, y]
+  // 연도 고르기 — 오른쪽 버튼, 고른 연도는 기억(처음엔 가장 최근 연도)
+  const years = [...new Set(months.map(m => m.ym.slice(0, 4)))], keep = store.get("smp-dash-cal-year");
+  if (!years.includes(drawCalendar.year)) drawCalendar.year = years.includes(keep) ? keep : years[years.length - 1];
+  const year = drawCalendar.year, yb = $("cal-years");
+  yb.hidden = years.length < 2;
+  yb.innerHTML = years.map(y => `<button type="button" data-y="${y}" aria-pressed="${y === year}">${y}년</button>`).join("");
+  yb.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { drawCalendar.year = b.dataset.y; store.set("smp-dash-cal-year", b.dataset.y); drawCalendar(); }));
+  const grid = document.createElement("div"); grid.className = "cal-months"; box.appendChild(grid);
+  months.filter(m => m.ym.startsWith(year)).forEach(({ ym, idx }) => {
+    const errs = idx.map(i => dayErr(days[i])).filter(v => v != null);
+    const fig = document.createElement("div"); fig.className = "cal-month"; grid.appendChild(fig);
+    fig.innerHTML = `<div class="cal-mh"><b>${+ym.slice(5)}월</b><span>${errs.length ? `평균 오차 ${f1(mean(errs))}원` : "실적 없음"}</span></div>`;
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${year}년 ${+ym.slice(5)}월 — 날짜별 평균 오차와 실제 급락·급등일` }, fig);
+    "월화수목금토일".split("").forEach((t, j) => txt(svg, j * pitch + cell / 2, 12, t, j >= 5 ? "tk tk-we" : "tk"));
+    const dow0 = (new Date(ym + "-01T00:00").getDay() + 6) % 7;   // 월요일 = 0
+    idx.forEach(i => {
+      const d = days[i], k = dow0 + (+d.d.slice(8)) - 1, x = (k % 7) * pitch, y = top + Math.floor(k / 7) * pitch;
+      where[i] = [svg, x, y];
+      const err = dayErr(d), w = D.warn[d.d] || {}, c = w.c || w.cw, bin = err == null ? -1 : CAL_BINS.filter(b => err >= b).length;
+      const r = s("rect", { x, y, width: cell, height: cell, rx: 5, fill: bin < 0 ? "none" : CAL_RAMP[bin], class: bin < 0 ? "cal-none" : "cal", "data-i": i }, svg);
+      txt(svg, x + cell / 2, y + cell / 2 + 6, +d.d.slice(8), bin >= 3 ? "cal-dn on-dark" : "cal-dn");
+      const crash = evC.has(d.d) || (c && c[2] === 1), spike = evS.has(d.d);
+      if (crash) s("circle", { cx: x + 5, cy: y + 5, r: 3.3, class: "ev-c cal-dot" }, svg);
+      if (spike) s("circle", { cx: x + cell - 5, cy: y + 5, r: 3.3, class: "ev-s cal-dot" }, svg);
+      r.addEventListener("pointermove", ev => { const bx = host.getBoundingClientRect();
+        tipAt(tip, host, ev.clientX - bx.left, ev.clientY - bx.top, `<b>${kdate(d.d)}(${w.dow || ""})</b>${w.hol ? " " + w.hol : ""}
+          <div class="row">그날 평균 오차<em>${err == null ? "실적 없음" : f2(err) + "원"}</em></div>
+          ${crash ? '<div class="row"><i class="key-dot" style="background:var(--s1)"></i>실제 급락</div>' : ""}
+          ${spike ? '<div class="row"><i class="key-dot" style="background:var(--pos)"></i>실제 급등</div>' : ""}
+          <div class="muted">눌러서 「하루 자세히」로</div>`); });
+      r.addEventListener("pointerleave", () => tip.style.display = "none");
+      r.addEventListener("click", () => { tip.style.display = "none"; select(i); showView("day", true); });
+    });
+  });
+  const ring = s("rect", { width: cell + 4, height: cell + 4, rx: 7, class: "cal-sel" });
+  drawCalendar.sel = i => { const p = where[i]; if (!p) return; p[0].appendChild(ring); ring.setAttribute("x", p[1] - 2); ring.setAttribute("y", p[2] - 2); };
+  drawCalendar.sel(cur);
+}
+$("cal-legend").innerHTML = ["4원 미만", "4~7원", "7~10원", "10~15원", "15원 이상"].map((t, j) => `<span><i class="key-sq" style="background:${CAL_RAMP[j]}"></i>${t}</span>`).join("") +
+  `<span><i class="key-sq cal-none-key"></i>실적 없음</span><span><i class="key-dot" style="background:var(--s1)"></i>실제 급락</span><span><i class="key-dot" style="background:var(--pos)"></i>실제 급등</span>`;
+
+/* ---------- 일자별 평균 가격 (전체 기간) ---------- */
+function drawOverview() {
+  const box = $("overview"); box.innerHTML = "";
+  const W = box.clientWidth, H = 262, m = { l: 40, r: 10, t: 20, b: 58 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "날짜별 평균 실적과 예측 가격" }, box);
+  const vals = days.flatMap(d => [d.my, d.mp]).filter(v => v != null);
+  const ticks = niceTicks(Math.min(...vals), Math.max(...vals), 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const X = i => m.l + (days.length === 1 ? iw / 2 : i * iw / (days.length - 1));
+  const Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
+  ticks.forEach(t => { s("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: t === y0 ? "ax" : "gl" }, svg); txt(svg, m.l - 6, Y(t) + 4, t, "tk", "end"); });
+  days.forEach((d, i) => { if (d.d.endsWith("-01")) { s("line", { x1: X(i), x2: X(i), y1: m.t + ih, y2: m.t + ih + 4, class: "ax" }, svg); txt(svg, X(i), m.t + ih + 16, +d.d.slice(5, 7) + "월"); } });
+  txt(svg, 0, 9, "원/kWh", "tk", "start");
+  const path = key => { let p = "", pen = false; days.forEach((d, i) => { const v = d[key]; if (v == null) { pen = false; return; } p += (pen ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1); pen = true; }); return p; };
+  s("path", { d: path("my"), class: "ln-y" }, svg);
+  s("path", { d: path("mp"), class: "ln-p" }, svg);
+  // 실제 급락·급등일 — 그래프 아래 두 줄
+  const rc = m.t + ih + 30, rs = m.t + ih + 46;
+  txt(svg, m.l - 6, rc + 4, "급락", "tk", "end"); txt(svg, m.l - 6, rs + 4, "급등", "tk", "end");
+  days.forEach((d, i) => {
+    if (evC.has(d.d)) s("circle", { cx: X(i), cy: rc, r: 4.5, class: "ev-c" }, svg);
+    if (evS.has(d.d)) s("circle", { cx: X(i), cy: rs, r: 4.5, class: "ev-s" }, svg);
+  });
+  const sel = s("line", { x1: X(cur), x2: X(cur), y1: m.t, y2: rs + 6, class: "sel" }, svg);
+  const hair = s("line", { y1: m.t, y2: m.t + ih, class: "hair", visibility: "hidden" }, svg);
+  const tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip);
+  const hit = s("rect", { x: m.l, y: m.t, width: iw, height: rs + 8 - m.t, class: "hit hit-click" }, svg);
+  const at = e => { const r = svg.getBoundingClientRect(); const x = (e.clientX - r.left) * W / r.width; return Math.max(0, Math.min(days.length - 1, Math.round((x - m.l) / iw * (days.length - 1)))); };
+  hit.addEventListener("pointermove", e => {
+    const i = at(e), d = days[i], w = D.warn[d.d] || {};
+    hair.setAttribute("x1", X(i)); hair.setAttribute("x2", X(i)); hair.setAttribute("visibility", "visible");
+    const ev = [evC.has(d.d) ? "실제 급락일" : "", evS.has(d.d) ? "실제 급등일" : ""].filter(Boolean).join(" · ");
+    tipAt(tip, box, X(i) * box.clientWidth / W, Y(d.mp ?? d.my ?? y0) * box.clientWidth / W,
+      `<b>${kdate(d.d)}(${w.dow || ""})</b>${w.hol ? " " + w.hol : ""}
+       <div class="row"><i class="key-line" style="background:var(--actual)"></i>평균 실적<em>${f1(d.my)}원</em></div>
+       <div class="row"><i class="key-line" style="background:var(--pred)"></i>평균 예측<em>${f1(d.mp)}원</em></div>
+       ${ev ? `<div class="muted">${ev}</div>` : ""}<div class="muted">눌러서 자세히 보기</div>`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; hair.setAttribute("visibility", "hidden"); });
+  hit.addEventListener("click", e => { select(at(e)); showView("day", true); });
+  drawOverview.sel = i => { sel.setAttribute("x1", X(i)); sel.setAttribute("x2", X(i)); };
+}
+
+/* ---------- 그날 24시간 가격 ---------- */
+function drawDay() {
+  const d = days[cur], w = D.warn[d.d] || {};
+  const box = $("daychart"); box.innerHTML = "";
+  const W = box.clientWidth, H = 280, m = { l: 40, r: 10, t: 20, b: 28 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": `${kdate(d.d)} 시간별 실적·예측·80% 범위` }, box);
+  const crashDay = !!(w.c || w.cw);
+  const vals = [...d.y, ...d.p, ...d.lo, ...d.hi, ...(d.thr || [])].filter(v => v != null).concat(crashDay ? [30] : []);
+  const ticks = niceTicks(Math.min(...vals), Math.max(...vals), 5);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const X = h => m.l + (h - 1) * iw / 23, Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
+  txt(svg, 0, 9, "원/kWh", "tk", "start");
+  ticks.forEach(t => { s("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: t === y0 ? "ax" : "gl" }, svg); txt(svg, m.l - 6, Y(t) + 4, t, "tk", "end"); });
+  [1, 4, 8, 12, 16, 20, 24].forEach(h => txt(svg, X(h), H - 8, h + "시"));
+  let band = "";
+  d.hi.forEach((v, i) => { band += (i ? "L" : "M") + X(i + 1).toFixed(1) + " " + Y(v).toFixed(1); });
+  for (let i = 23; i >= 0; i--) band += "L" + X(i + 1).toFixed(1) + " " + Y(d.lo[i]).toFixed(1);
+  s("path", { d: band + "Z", class: "band" }, svg);
+  if (crashDay) { s("line", { x1: m.l, x2: W - m.r, y1: Y(30), y2: Y(30), class: "ref" }, svg); txt(svg, W - m.r, Y(30) - 5, "급락 기준 30원", "tk", "end"); }
+  const line = arr => { let p = "", pen = false; arr.forEach((v, i) => { if (v == null) { pen = false; return; } p += (pen ? "L" : "M") + X(i + 1).toFixed(1) + " " + Y(v).toFixed(1); pen = true; }); return p; };
+  if (d.thr) s("path", { d: line(d.thr), class: "ln-thr" }, svg);           // 급등 기준 = 같은 시각 28일 중앙값 + 20원
+  s("path", { d: line(d.y), class: "ln-y" }, svg);
+  s("path", { d: line(d.p), class: "ln-p" }, svg);
+  const hair = s("line", { y1: m.t, y2: m.t + ih, class: "hair", visibility: "hidden" }, svg);
+  const dy = s("circle", { r: 4, class: "dot-y", visibility: "hidden" }, svg);
+  const dp = s("circle", { r: 4, class: "dot-p", visibility: "hidden" }, svg);
+  const tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip);
+  const hit = s("rect", { x: m.l - 8, y: m.t, width: iw + 16, height: ih, class: "hit" }, svg);
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width;
+    const h = Math.max(1, Math.min(24, Math.round((x - m.l) / iw * 23) + 1)), i = h - 1;
+    hair.setAttribute("x1", X(h)); hair.setAttribute("x2", X(h)); hair.setAttribute("visibility", "visible");
+    if (d.y[i] != null) { dy.setAttribute("cx", X(h)); dy.setAttribute("cy", Y(d.y[i])); dy.setAttribute("visibility", "visible"); } else dy.setAttribute("visibility", "hidden");
+    dp.setAttribute("cx", X(h)); dp.setAttribute("cy", Y(d.p[i])); dp.setAttribute("visibility", "visible");
+    const inside = d.y[i] == null ? "" : (d.y[i] >= d.lo[i] && d.y[i] <= d.hi[i] ? "범위 안" : "범위 밖");
+    tipAt(tip, box, X(h) * box.clientWidth / W, Y(d.p[i]) * box.clientWidth / W,
+      `<b>${h}시</b>
+       <div class="row"><i class="key-line" style="background:var(--actual)"></i>실적<em>${f2(d.y[i])}원</em></div>
+       <div class="row"><i class="key-line" style="background:var(--pred)"></i>예측<em>${f2(d.p[i])}원</em></div>
+       <div class="row"><i class="key-band"></i>80% 범위<em>${f1(d.lo[i])} ~ ${f1(d.hi[i])}원</em></div>
+       ${inside ? `<div class="muted">${inside}</div>` : ""}
+       <div class="row" style="margin-top:4px">수요예측<em>${mw(d.dem[i])}MW</em></div>
+       <div class="row">태양광 전망 · 실적<em>${mw(d.pvc[i])} · ${mw(d.pv[i])}MW</em></div>`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; [hair, dy, dp].forEach(n => n.setAttribute("visibility", "hidden")); });
+}
+
+/* ---------- 근거 기여 막대 ---------- */
+function drawContrib() {
+  const d = days[cur], e = D.expl[d.d], box = $("contrib"); box.innerHTML = "";
+  if (!e) { $("d-sent").textContent = "이 날짜의 근거 문장이 없습니다."; return; }
+  // 「주요 근거:」부터 다음 줄, 분홍 글씨로
+  const k = e.s.indexOf("주요 근거:"), why = document.createElement("span");
+  why.className = "why"; why.textContent = e.s.slice(k);
+  $("d-sent").replaceChildren(...(k > 0 ? [e.s.slice(0, k).trimEnd(), document.createElement("br"), why] : [e.s]));
+
+  // 폭포 그래프 — 최근 4주 평균에서 출발해 요인을 하나씩 더하면 그날 예측에 도착
+  const top3 = new Set(e.parts.slice(0, 6).map((v, i) => [Math.abs(v || 0), i]).sort((a, b) => b[0] - a[0]).slice(0, 3).map(x => x[1]));
+  let run = e.ref;
+  const cols = [{ name: "최근 4주 평균", total: true, to: e.ref }];
+  D.parts.forEach((name, i) => { const v = e.parts[i] || 0; cols.push({ name, v, from: run, to: run + v, on: top3.has(i) }); run += v; });
+  cols.push({ name: "그날 예측", total: true, to: e.ens });
+  const W = box.clientWidth, H = 260, m = { l: 40, r: 8, t: 26, b: 46 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, band = iw / cols.length, bw = Math.min(44, band * 0.56);
+  const levels = cols.flatMap(c => c.total ? [c.to] : [c.from, c.to]);
+  const ticks = niceTicks(Math.min(...levels) - 1.5, Math.max(...levels) + 1.5, 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1], Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "예측 근거 폭포 그래프: 최근 4주 평균에서 그날 예측까지" }, box);
+  txt(svg, 0, 9, "원/kWh", "tk", "start");
+  ticks.forEach(t => { s("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: "gl" }, svg); txt(svg, m.l - 6, Y(t) + 4, t, "tk", "end"); });
+  const tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip);
+  const two = band < 78;                                       // 좁으면 이름을 두 줄로
+  cols.forEach((c, i) => {
+    const cx = m.l + band * i + band / 2, x = cx - bw / 2;
+    if (i < cols.length - 1)                                   // 다음 칸으로 이어지는 수평선
+      s("line", { x1: cx + bw / 2, x2: cx + band - bw / 2, y1: Y(c.to), y2: Y(c.to), class: "hair" }, svg);
+    if (c.total) {
+      s("rect", { x, y: Y(c.to) - 2, width: bw, height: 4, rx: 2, class: "bar-mae" }, svg);
+      txt(svg, cx, Y(c.to) - 8, f1(c.to), "tk-2 wf-total");
+    } else {
+      const top = Y(Math.max(c.from, c.to)), h = Math.max(1.5, Math.abs(Y(c.from) - Y(c.to)));
+      s("rect", { x, y: top, width: bw, height: h, rx: Math.min(3, h / 2), class: (c.v >= 0 ? "bar-pos" : "bar-neg") + (c.on ? "" : " fade") }, svg);
+      txt(svg, cx, c.v >= 0 ? top - 5 : top + h + 12, sg(c.v), c.on ? "tk-2" : "tk");
+    }
+    const words = two ? c.name.replace("·", "· ").split(" ") : [c.name];
+    const lines = words.length > 2 ? [words.slice(0, -1).join(" "), words.at(-1)] : words;
+    lines.forEach((ln, j) => txt(svg, cx, H - m.b + 16 + j * 13, ln.trim(), c.total ? "tk-2 wf-total" : c.on ? "tk-why" : "tk"));
+    const hit = s("rect", { x: cx - band / 2, y: m.t, width: band, height: ih, class: "hit" }, svg);
+    hit.addEventListener("pointermove", ev => { const r = box.getBoundingClientRect();
+      tipAt(tip, box, ev.clientX - r.left, ev.clientY - r.top, c.total
+        ? `<b>${c.name}</b><div>${f1(c.to)}원</div>`
+        : `<b>${c.name}</b><div>${c.v >= 0 ? "예측을 올림" : "예측을 내림"} <b>${sg(c.v)}원</b></div><div class="muted">${f1(c.from)}원 → ${f1(c.to)}원</div>` +
+          (c.name === "다른 모델 보정" ? '<div class="muted">Chronos-2 등 LightGBM 기본형 밖의 몫</div>' : "")); });
+    hit.addEventListener("pointerleave", () => tip.style.display = "none");
+  });
+}
+
+/* ---------- 그날 경보 ---------- */
+function drawWarn() {
+  // 사건마다 상자 하나: 전날 예측(확률·단계) → 실제(구간) → 판정. 거래시간 h시 = 실제 (h-1):00~h:00
+  const dd = days[cur], d = dd.d, w = D.warn[d] || {}, out = [], sg = D.seg[d] || [];
+  const jcls = j => j === "성공" ? "ok" : (j === "실패" || j === "헛경보") ? "miss" : "";
+  const thv = (dd.thr || []).filter(v => v != null);
+  const one = (key, title, when, pv, rule) => {
+    const segs = sg.filter(x => x[0] === key), nh = segs.reduce((a, x) => a + x[2] - x[1] + 1, 0);
+    if (!pv) return `<div class="warn-box"><div class="warn-head"><h3>${title}</h3><span class="chip">${when}</span></div><div class="warn-main">판단 자료 없음</div></div>`;
+    const [p, lv] = pv;
+    const verdict = segs.length ? segs[0][5] : (lv === "경보" || lv === "주의") ? "헛경보" : "맞음";
+    const res = segs.length ? `실제 <span class="ng">${segs.length}구간 ${nh}시간</span>` : "실제 없음";
+    const rows = segs.map(([k, h1, h2, pj, , , act, pr]) =>
+      `<div class="seg-row">${h1 === h2 ? h1 : h1 + "~" + h2}시 (${h2 - h1 + 1}시간) · 실적 평균 <b>${f1(act)}원</b>` +
+      (key === "jeju" ? "" : ` · 가격 모델 <b class="${jcls(pj)}">${pj}</b>${pr != null ? `<span class="muted">(예측 ${f1(pr)}원)</span>` : ""}`) + `</div>`).join("");
+    return `<div class="warn-box"><div class="warn-head">${lv ? badge(lv) : ""}<h3>${title}</h3><span class="chip">${when}</span></div>` +
+      `<div class="warn-main">확률 <b>${pct(p)}</b> · ${res} · 판정 <b class="${jcls(verdict)}">${verdict}</b></div>` +
+      (rows ? `<div class="seg-list">${rows}</div>` : "") + `<div class="warn-sub">${rule}</div></div>`;
+  };
+  $("d-warn-title").textContent = dayRegion === "jeju" ? "제주 급락 경보" : "육지 급락·급등 경보";
+  if (dayRegion === "jeju") out.push(one("jeju", "제주 급락", `전날 ${IH.crash}시 판단`, w.j, "기준: 제주 SMP ≤ 0원"));
+  else {
+  out.push(one("crash", w.c ? "육지 급락" : "육지 급락 (평일)", `전날 ${IH.crash}시 판단`, w.c || w.cw,
+    `기준: 11~15시 &lt; ${ES.land_crash_won}원${w.mid != null ? ` · 그날 한낮 최저 ${f1(w.mid)}원` : ""}`));
+  out.push(one("spike", "육지 급등", `전날 ${IH.spike}시 판단`, w.s25,
+    `기준: 같은 시각 28일 중앙값 + ${ES.spike_add_won}원` + (thv.length ? ` (그날 ${f1(Math.min(...thv))}~${f1(Math.max(...thv))}원)` : "")));
+  }
+  if (w.m13) out.push(`<div class="muted">매월 1~3일 — 연료비 단가가 바뀌는 날</div>`);
+  $("d-warn").innerHTML = out.join("");
+}
+
+/* ---------- 날짜 선택 ---------- */
+function select(i) {
+  cur = Math.max(0, Math.min(days.length - 1, i));
+  const d = days[cur], w = D.warn[d.d] || {};
+  store.set("smp-dash-date", d.d);
+  $("pick").value = d.d;
+  $("prev").disabled = cur === 0; $("next").disabled = cur === days.length - 1;
+  $("jump").value = d.d; if ($("jump").value !== d.d) $("jump").value = "";
+  $("d-title").innerHTML = `${kdate(d.d)}(${w.dow || ""})${w.hol ? ` <span class="chip">${w.hol}</span>` : ""}`;
+  const ok = d.y.map((y, i) => y == null ? null : Math.abs(d.p[i] - y));
+  const inb = d.y.filter((y, i) => y != null && y >= d.lo[i] && y <= d.hi[i]).length, ny = d.y.filter(y => y != null).length;
+  // 숫자 카드 3개 — 가격 / 수요예측 / 태양광 (MW, 하루 합계는 MWh)
+  const card = (title, rows) => `<div class="sc-h">${title}</div>` + rows.map(([k, v]) => `<div class="sc-row"><span>${k}</span>${v}</div>`).join("");
+  $("d-stats").innerHTML = card("가격", ny
+    ? [["평균 실적", `<b>${f1(d.my)}원</b>`], ["평균 예측", `<b>${f1(d.mp)}원</b>`], ["그날 평균 오차", `<b>${f2(mean(ok))}원</b>`],
+       ["범위 안", `<b class="v-cover">${inb}/${ny}시간</b>`]]
+    : [["평균 예측", `<b>${f1(d.mp)}원</b>`], ["실적", "<b>교육용 데이터에 없음</b>"]]);
+  const peak = a => { let k = -1; a.forEach((v, i) => { if (v != null && (k < 0 || v > a[k])) k = i; }); return k; };
+  const sum = a => { const v = a.filter(x => x != null); return v.length ? v.reduce((p, c) => p + c, 0) : null; };
+  const dk = peak(d.dem), mid = d.dem.slice(10, 15).filter(v => v != null);
+  $("d-dem").innerHTML = card("수요예측", dk < 0 ? [["자료", "<b>없음</b>"]]
+    : [["평균", `<b>${mw(mean(d.dem))}MW</b>`], ["최대", `<b>${mw(d.dem[dk])}MW<small>(${dk + 1}시)</small></b>`],
+       ["한낮(11~15시) 최저", `<b>${mw(Math.min(...mid))}MW</b>`]]);
+  const ck = peak(d.pvc), ak = peak(d.pv), sc = sum(d.pvc), sa = sum(d.pv);
+  $("d-pv").innerHTML = card("태양광", [["최대 전망", `<b>${mw(d.pvc[ck])}MW</b>`], ["최대 실적", `<b>${ak < 0 ? "없음" : mw(d.pv[ak]) + "MW"}</b>`],
+    ["하루 합계 전망", `<b>${mw(sc)}MWh</b>`],
+    ["하루 합계 실적", `<b>${sa == null ? "없음" : mw(sa) + "MWh"}${sa != null && sc ? `<small>(${sa >= sc ? "+" : "−"}${Math.abs((sa / sc - 1) * 100).toFixed(0)}%)</small>` : ""}</b>`]]);
+  $("d-table").innerHTML = `<thead><tr><th>시간</th><th class="n">실적(원)</th><th class="n">예측(원)</th><th class="n">하한80</th><th class="n">상한80</th><th class="n">수요예측(MW)</th><th class="n">태양광 전망(MW)</th><th class="n">태양광 실적(MW)</th></tr></thead><tbody>` +
+    d.p.map((p, i) => `<tr><td>${i + 1}시</td><td class="n">${f2(d.y[i])}</td><td class="n">${f2(p)}</td><td class="n">${f2(d.lo[i])}</td><td class="n">${f2(d.hi[i])}</td><td class="n">${mw(d.dem[i])}</td><td class="n">${mw(d.pvc[i])}</td><td class="n">${mw(d.pv[i])}</td></tr>`).join("") + "</tbody>";
+  drawDay(); drawWarn(); drawContrib(); drawJejuForecast();
+  if (drawOverview.sel) drawOverview.sel(cur);
+  if (drawCalendar.sel) drawCalendar.sel(cur);
+}
+$("pick").min = days[0].d; $("pick").max = days[days.length - 1].d;
+$("pick").addEventListener("change", e => { if (idxOf[e.target.value] != null) select(idxOf[e.target.value]); });
+$("prev").addEventListener("click", () => select(cur - 1));
+$("next").addEventListener("click", () => select(cur + 1));
+const lvOf = (d, k) => (D.warn[d] && D.warn[d][k]) ? D.warn[d][k][1] : "정상";
+// 날짜 종류: 공휴일(이름) > 주말 > 평일
+const dayType = d => { const w = D.warn[d] || {}; return w.hol ? `공휴일·${w.hol}` : (w.dow === "토" || w.dow === "일") ? "주말" : "평일"; };
+const nSeg = (d, k) => (D.seg[d] || []).filter(x => x[0] === k).length;
+const opt = (d, k, ek) => `<option value="${d}">${kdate(d)}(${(D.warn[d] || {}).dow || ""}) · ${dayType(d)} · ${nSeg(d, ek)}구간${k ? " · " + lvOf(d, k) : ""}</option>`;
+const og = (label, list, k, ek) => list.length ? `<optgroup label="${label} (${list.length}일)">${list.map(d => opt(d, k, ek)).join("")}</optgroup>` : "";
+// 하루 자세히 — 오른쪽 「육지 | 제주」 버튼 (고른 지역은 기억)
+let dayRegion = store.get("smp-dash-region") === "jeju" ? "jeju" : "land";
+function buildJump() {
+  $("jump").innerHTML = dayRegion === "jeju"
+    ? `<option value="">실제 제주 급락일로 이동…</option>` + og("제주 급락", D.evDays.j, "j", "jeju")
+    : `<option value="">실제 급락·급등일로 이동…</option>` +
+      og("육지 급락 · 휴일", D.evDays.c, "c", "crash") + og("육지 급락 · 평일", D.evDays.cw, "cw", "crash") + og("육지 급등", D.evDays.s, "s25", "spike");
+}
+function markRegion() {
+  $("day-sec").dataset.region = dayRegion;
+  $("day-region").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.r === dayRegion)));
+  buildJump();
+}
+$("day-region").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+  dayRegion = b.dataset.r; store.set("smp-dash-region", dayRegion); markRegion(); select(cur);
+}));
+markRegion();
+// 표로 보기 — 날짜 옆 버튼을 누르면 그날 시간별 표를 팝업으로 (지금 고른 지역)
+const tblDlg = $("d-table-dlg");
+$("d-table-open").addEventListener("click", () => {
+  const d = days[cur], w = D.warn[d.d] || {};
+  $("d-table-title").textContent = `${kdate(d.d)}(${w.dow || ""}) ${dayRegion === "jeju" ? "제주" : "육지"} 시간별 표`;
+  if (tblDlg.showModal) tblDlg.showModal(); else tblDlg.setAttribute("open", "");
+  tblDlg.querySelector(".dlg-body").scrollTop = 0;
+});
+$("d-table-close").addEventListener("click", () => tblDlg.close ? tblDlg.close() : tblDlg.removeAttribute("open"));
+tblDlg.addEventListener("click", e => { if (e.target === tblDlg) tblDlg.close(); });   // 어두운 바깥을 누르면 닫힘
+$("jump").addEventListener("change", e => { if (e.target.value) select(idxOf[e.target.value]); });
+
+
+/* ---------- 사건 판정 결과 (발표용 표 두 개, 시험 기간·모델을 바꾸면 다시 셈) ---------- */
+const JG = { model: "prob", from: ES.test[0], to: ES.test[1] };
+const JG_EV = [["spike", "육지 급등"], ["crash", "육지 급락"], ["jeju", "제주 급락"]];
+const JG_G = ["휴일", "평일"];
+const jgHour = k => JG.model === "price" ? IH.price : (k === "spike" ? IH.spike : IH.crash);
+function jgCalc() {
+  const { from, to, model } = JG, col = model === "price" ? 3 : 4;
+  const inR = d => d >= from && d <= to;
+  const t1 = {}, t2 = {};
+  for (const [k] of JG_EV) for (const g of JG_G) {
+    t1[k + g] = { n: 0, 성공: 0, 부분: 0, 실패: 0, 없음: 0 };
+    t2[k + g] = { all: 0, 경보: 0, 주의: 0 };
+  }
+  for (const r of D.judge.seg) {                  // [date, key, 구분, 가격모델, 경보모델]
+    if (!inR(r[0])) continue;
+    const c = t1[r[1] + r[2]], v = r[col];
+    c.n++;
+    if (v in c && v !== "n") c[v]++; else c.없음++;   // 「예측 없음」·「모델 없음」
+  }
+  const fm = model === "price" ? "가격" : "경보";
+  for (const r of D.judge.fa) {                   // [모델, key, date, 구분, 단계]
+    if (r[0] !== fm || !inR(r[2])) continue;
+    const c = t2[r[1] + r[3]];
+    c.all++;
+    if (r[4] === "경보" || r[4] === "주의") c[r[4]]++;
+  }
+  const noModel = k => model === "price" && k === "jeju";      // 제주는 시간별 가격 모델이 없음
+  for (const [k, name] of JG_EV) for (const g of JG_G) {
+    const c = t1[k + g];
+    if (!noModel(k) && c.성공 + c.부분 + c.실패 !== c.n)
+      console.warn(`[사건 판정] ${name} ${g}: 성공 ${c.성공} + 부분 ${c.부분} + 실패 ${c.실패} ≠ 구간 수 ${c.n} (예측 없음 ${c.없음}구간)`);
+  }
+  return { t1, t2, noModel };
+}
+const jgCell = (v, n) => `${v}(${n ? (v / n * 100).toFixed(1) + "%" : "-"})`;
+function jgFaText(c, k, R) {
+  if (R.noModel(k)) return "-";
+  return JG.model === "prob" ? `${c.all} (주의 ${c.주의} · 경보 ${c.경보})` : `${c.all}`;
+}
+function jgExamples() {
+  const resultRank = { 성공: 2, 부분: 1, 실패: 0, "모델 없음": -1 };
+  const keyForWarn = (k, g) => k === "spike" ? "s25" : k === "jeju" ? "j" : g === "휴일" ? "c" : "cw";
+  return JG_EV.flatMap(([k, name]) => JG_G.map(g => {
+    const candidates = D.judge.seg.filter(r => r[1] === k && r[2] === g && r[0] >= JG.from && r[0] <= JG.to);
+    candidates.sort((a, b) => {
+      const ai = JG.model === "price" && k !== "jeju" ? 3 : 4;
+      return (resultRank[b[ai]] - resultRank[a[ai]]) || ((b[6] - b[5]) - (a[6] - a[5])) || a[0].localeCompare(b[0]);
+    });
+    const r = candidates[0];
+    if (!r) return [name, g, "–", "–", "–", "–", "–", "해당 기간 사건 없음"];
+    const alertInfo = (D.warn[r[0]] || {})[keyForWarn(k, g)];
+    const alertLevel = alertInfo?.[1] || ({ 성공: "경보", 부분: "주의", 실패: "정상" }[r[4]] || "–");
+    const outcome = JG.model === "price" && k !== "jeju" ? r[3] : r[4];
+    const evidence = JG.model === "price" && k !== "jeju"
+      ? `${r[8] == null ? "–" : f2(r[8]) + "원"}`
+      : k === "jeju" && JG.model === "price"
+        ? "제주 시간별 예측은 아래 24시간 차트 참조"
+        : `${alertInfo ? (alertInfo[0] * 100).toFixed(1) + "% · " : ""}${alertLevel}`;
+    return [name, g, r[0], `${r[5]}~${r[6]}시 (${r[6] - r[5] + 1}시간)`,
+      r[7] == null ? "–" : f2(r[7]) + "원", r[9] == null ? "–" : f2(r[9]) + "원",
+      evidence, outcome];
+  }));
+}
+function jgConfusionData() {
+  const indices = {
+    spike: { actual: 2, prob: 5, price: 8 },
+    crash: { actual: 3, prob: 6, price: 9 },
+    jeju: { actual: 4, prob: 7, price: 10 }
+  };
+  return JG_EV.flatMap(([k, name]) => JG_G.map(g => {
+    const ix = indices[k], predictedAt = ix[JG.model];
+    const counts = { tp: 0, fn: 0, fp: 0, tn: 0, n: 0 };
+    for (const r of D.judge.days) {
+      if (r[0] < JG.from || r[0] > JG.to || r[1] !== g || r[ix.actual] == null || r[predictedAt] == null) continue;
+      const actual = r[ix.actual] === 1, predicted = r[predictedAt] === 1;
+      counts[actual ? (predicted ? "tp" : "fn") : (predicted ? "fp" : "tn")]++;
+      counts.n++;
+    }
+    return { k, name, g, counts };
+  }));
+}
+function jgTableHtml(head, body, cls = "") {
+  return `<thead><tr>${head.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>` +
+    body.map(row => `<tr>${row.map(x => `<td>${x}</td>`).join("")}</tr>`).join("") + "</tbody>";
+}
+function jgRows(R) {                               // 내보내기용 글자 표
+  const h1 = ["사건", "구분", "구간 수", "성공", "부분", "실패"], b1 = [];
+  for (const [k, name] of JG_EV) JG_G.forEach((g, gi) => {
+    const c = R.t1[k + g];
+    b1.push([gi ? "" : name, g, `${c.n}`].concat(R.noModel(k) ? ["-", "-", "-"] : ["성공", "부분", "실패"].map(j => jgCell(c[j], c.n))));
+  });
+  const h2 = ["사건", "휴일", "평일", "계"], b2 = [];
+  for (const [k, name] of JG_EV) {
+    const a = R.t2[k + "휴일"], b = R.t2[k + "평일"], s = { all: a.all + b.all, 경보: a.경보 + b.경보, 주의: a.주의 + b.주의 };
+    b2.push([name, jgFaText(a, k, R), jgFaText(b, k, R), jgFaText(s, k, R)]);
+  }
+  const h4 = ["사건", "구분", "실제 있음·예측 있음", "실제 있음·예측 없음", "실제 없음·예측 있음", "실제 없음·예측 없음", "표본 일수"];
+  const b4 = R.confusions.map(x => [x.name, x.g, x.unavailable ? "해당 없음" : x.counts.tp,
+    x.unavailable ? "해당 없음" : x.counts.fn, x.unavailable ? "해당 없음" : x.counts.fp,
+    x.unavailable ? "해당 없음" : x.counts.tn, x.unavailable ? "해당 없음" : x.counts.n]);
+  return { h1, b1, h2, b2, h4, b4 };
+}
+function jgMetaLines() {
+  const hrs = JG.model === "price" ? `전날 ${IH.price}시`
+    : `전날 ${IH.spike}시 (육지 급등) · 전날 ${IH.crash}시 (육지 급락·제주 급락)`;
+  return [`시험 기간: ${kdate(JG.from)} ~ ${kdate(JG.to)}`, `학습 기간: ${kdate(ES.train[0])} ~ ${kdate(ES.train[1])}`, `예측 시점: ${hrs}`];
+}
+function drawJudge() {
+  const R = jgCalc();
+  const sub = t => JG.model === "prob" ? `(${t})` : "";   // 머리글 한 줄: 성공(경보) · 부분(주의) · 실패(놓침)
+  let h = `<thead><tr><th>사건</th><th>구분</th><th>구간 수</th><th>성공${sub("경보")}</th><th>부분${sub("주의")}</th><th>실패${sub("놓침")}</th></tr></thead><tbody>`;
+  for (const [k, name] of JG_EV) JG_G.forEach((g, gi) => {
+    const c = R.t1[k + g];
+    const cell = j => R.noModel(k) ? `<td class="na">-</td>`
+      : `<td><span class="cnt">${c[j]}</span><span class="rt">(${c.n ? (c[j] / c.n * 100).toFixed(1) + "%" : "-"})</span></td>`;
+    h += `<tr>${gi ? "" : `<td rowspan="2" class="ev-name">${name}</td>`}<td>${g}</td><td><span class="cnt">${c.n}</span></td>${cell("성공")}${cell("부분")}${cell("실패")}</tr>`;
+  });
+  $("jg-t1").innerHTML = h + "</tbody>";
+  const fa = (c, k) => R.noModel(k) ? `<td class="na">-</td>` : `<td><span class="cnt">${c.all}</span>` +
+    (JG.model === "prob" ? `<span class="sm">주의 ${c.주의} · 경보 ${c.경보}</span>` : "") + `</td>`;
+  h = `<thead><tr><th>사건</th><th>휴일</th><th>평일</th><th>계</th></tr></thead><tbody>`;
+  for (const [k, name] of JG_EV) {
+    const a = R.t2[k + "휴일"], b = R.t2[k + "평일"];
+    h += `<tr><td class="ev-name">${name}</td>${fa(a, k)}${fa(b, k)}${fa({ all: a.all + b.all, 경보: a.경보 + b.경보, 주의: a.주의 + b.주의 }, k)}</tr>`;
+  }
+  $("jg-t2").innerHTML = h + "</tbody>";
+  R.confusions = jgConfusionData();
+  $("jg-cm-note").textContent = JG.model === "prob"
+    ? "단위: 일 · 예측 있음 = 주의 또는 경보 · 실제 있음 = 그날 해당 사건 구간이 1개 이상 발생 · 예측 자료가 없는 날은 제외"
+    : `단위: 일 · 예측 있음 = 하루 중 한 번 이상 가격이 사건 문턱을 넘음(제주는 SMP ${ES.jeju_rule === "le0" ? "≤" : "="} 0원) · 실제 있음 = 그날 해당 사건 구간이 1개 이상 발생 · 제주 예측 출처: ${D.jejuForecast.source} · 「헛경보」 표의 연속 구간 헛경보와 단위가 다름`;
+  $("jg-confusion").innerHTML = R.confusions.map(x => {
+    const title = `${x.name} · ${x.g}`;
+    const c = x.counts;
+    if (!c.n) return `<div class="jg-cm-card"><h4>${title}</h4><div class="muted">해당 기간 예측 자료 없음</div></div>`;
+    const cell = (n, label, hit) => `<td${hit ? ' class="cm-hit"' : ""}><b>${n}</b><small>${label}</small></td>`;   // hit = 예측과 실제가 맞은 대각선 칸
+    return `<div class="jg-cm-card"><div class="cm-head"><h4>${title}</h4><span class="muted cm-total">표본 ${c.n}일</span></div><table class="jg-matrix" aria-label="${title} 실제 발생일과 예측일 비교">
+      <thead><tr><th>실제 \\ 예측</th><th>예측 있음</th><th>예측 없음</th></tr></thead>
+      <tbody><tr><th>실제 있음</th>${cell(c.tp, "적중", true)}${cell(c.fn, "놓침")}</tr>
+      <tr><th>실제 없음</th>${cell(c.fp, "헛경보")}${cell(c.tn, "적중", true)}</tr></tbody></table></div>`;
+  }).join("");
+  $("jg-t2note").textContent = JG.model === "prob" ? "경보·주의를 냈는데 사건이 없던 날 수" : "예측값만 문턱을 넘은 연속 구간 수";
+  const miss = JG_EV.reduce((s, [k]) => s + (R.noModel(k) ? 0 : JG_G.reduce((t, g) => t + R.t1[k + g].없음, 0)), 0);
+  const notes = [];
+  if (JG.model === "price") notes.push(`제주 시간별 예측선과 「실제 발생일과 예측일 비교」는 별도 제주 예측 이력(없으면 mirror 대체 예측)으로 계산합니다. 제주 사건 구간의 성공·부분·실패 판정은 경보 모델 결과를 사용합니다.`);
+  if (miss) notes.push(`<span class="warn">예측이 없는 구간 ${miss}개는 성공·부분·실패에 넣지 않았습니다 (예측은 2022년부터).</span>`);
+  if (JG.from <= ES.train[1]) notes.push(`<span class="warn">시험 기간이 학습 기간과 겹칩니다. 겹친 부분은 기준값을 정할 때 쓴 자료입니다.</span>`);
+  $("jg-meta").innerHTML = jgMetaLines().map(s => `<div>${s}</div>`).join("") +
+    (notes.length ? `<div class="muted" style="margin-top:6px">${notes.join("<br>")}</div>` : "");
+  JG.last = R;
+}
+function jgFlash(m) { $("jg-msg").textContent = m; clearTimeout(jgFlash.t); jgFlash.t = setTimeout(() => $("jg-msg").textContent = "", 2500); }
+(function initJudge() {
+  const f = $("jg-from"), t = $("jg-to");
+  for (const el of [f, t]) { el.min = E.judgeStart; el.max = ES.data_end; }
+  const sync = () => { f.value = JG.from; t.value = JG.to; };
+  sync();
+  const onDate = () => {
+    if (!f.value || !t.value) return;
+    let a = f.value < E.judgeStart ? E.judgeStart : f.value, b = t.value > ES.data_end ? ES.data_end : t.value;
+    if (a > b) [a, b] = [b, a];
+    JG.from = a; JG.to = b; sync(); drawJudge();
+  };
+  f.addEventListener("change", onDate); t.addEventListener("change", onDate);
+  $("jg-reset").addEventListener("click", () => { JG.from = ES.test[0]; JG.to = ES.test[1]; sync(); drawJudge(); });
+  $("jg-model").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    JG.model = b.dataset.m;
+    $("jg-model").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    drawJudge();
+  }));
+  const label = () => `${JG.model === "price" ? "가격 모델" : "확률(경보) 모델"}`;
+  $("jg-csv").addEventListener("click", () => {
+    const T = jgRows(JG.last), q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const lines = [[`사건 판정 결과 (${label()})`], ["사건 판정 (각 칸: 건수(비율))"], T.h1, ...T.b1, [],
+                   ["헛경보"], T.h2, ...T.b2, [],
+                   ["실제 발생일과 예측일 비교 (행: 실제, 열: 예측)"], T.h4, ...T.b4, [], ...jgMetaLines().map(s => [s])];
+    const blob = new Blob(["﻿" + lines.map(r => r.map(q).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `사건판정_${JG.model === "price" ? "가격" : "확률"}_${JG.from}_${JG.to}.csv`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    jgFlash("CSV를 내려받았어요");
+  });
+  $("jg-copy").addEventListener("click", async () => {
+    const T = jgRows(JG.last), meta = jgMetaLines();
+    const tsv = [`사건 판정 결과 (${label()})`, "사건 판정 (각 칸: 건수(비율))", T.h1.join("\t"), ...T.b1.map(r => r.join("\t")), "",
+                 "헛경보", T.h2.join("\t"), ...T.b2.map(r => r.join("\t")), "",
+                 "실제 발생일과 예측일 비교 (행: 실제, 열: 예측)", T.h4.join("\t"), ...T.b4.map(r => r.join("\t")), "", ...meta].join("\n");
+    const esc = v => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const td = "border:1px solid #bbb;padding:4px 8px;text-align:center", th = td + ";background:#f1f3f7;font-weight:bold";
+    const t1 = `<table style="border-collapse:collapse"><tr>${T.h1.map(v => `<th style="${th}">${esc(v)}</th>`).join("")}</tr>` +
+      T.b1.map((r, i) => `<tr>${r.map((v, j) => j === 0 ? (i % 2 ? "" : `<td rowspan="2" style="${td};font-weight:bold">${esc(v)}</td>`) : `<td style="${td}">${esc(v)}</td>`).join("")}</tr>`).join("") + `</table>`;
+    const t2 = `<table style="border-collapse:collapse"><tr>${T.h2.map(v => `<th style="${th}">${esc(v)}</th>`).join("")}</tr>` +
+      T.b2.map(r => `<tr>${r.map((v, j) => `<td style="${td}${j ? "" : ";font-weight:bold"}">${esc(v)}</td>`).join("")}</tr>`).join("") + `</table>`;
+    const t4 = `<table style="border-collapse:collapse"><tr>${T.h4.map(v => `<th style="${th}">${esc(v)}</th>`).join("")}</tr>` +
+      T.b4.map(r => `<tr>${r.map(v => `<td style="${td}">${esc(v)}</td>`).join("")}</tr>`).join("") + `</table>`;
+    const html = `<p><b>사건 판정</b> (각 칸: 건수(비율))</p>${t1}<p><b>헛경보</b></p>${t2}` +
+      `<p><b>실제 발생일과 예측일 비교 (행: 실제, 열: 예측)</b></p>${t4}<p>${meta.map(esc).join("<br>")}</p>`;
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }),
+                                                              "text/plain": new Blob([tsv], { type: "text/plain" }) })]);
+      } else await navigator.clipboard.writeText(tsv);
+      jgFlash("표를 복사했어요 — 엑셀·PPT에 붙여 넣으세요");
+    } catch (e) {
+      const ta = document.createElement("textarea"); ta.value = tsv; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); jgFlash("표를 복사했어요"); } catch (e2) { jgFlash("복사하지 못했어요"); }
+      ta.remove();
+    }
+  });
+  drawJudge();
+})();
+
+$("ev-rules").innerHTML = [
+  `조건이 이어진 시간을 1구간으로 셉니다. 휴일 = 주말 + 공휴일.`,
+  `<b>육지 급등</b>: 실적 ≥ 같은 시각 직전 ${ES.median_days}일 중앙값 + ${ES.spike_add_won}원 (전날 ${IH.spike}시 판단)`,
+  `<b>육지 급락</b>: ${ES.land_crash_hours[0]}~${ES.land_crash_hours[1]}시 실적 &lt; ${ES.land_crash_won}원 · <b>제주 급락</b>: 제주 SMP ≤ 0원 (전날 ${IH.crash}시 판단)`,
+  `경보 = 성공 · 주의 = 부분 · 없음 = 실패. 사건 없는 날의 경보·주의는 헛경보. 가격 모델은 구간 절반 이상에서 기준을 넘으면 성공.`,
+  `기준값과 비율은 학습 구간(${kdate(ES.train[0])}~${kdate(ES.train[1])})에서 정하고, 화면의 성적은 모두 ${testName} 구간입니다.`,
+].map(s => `<li>${s}</li>`).join("");
+
+/* ---------- 목표 판정 ---------- */
+const T = [
+  ["MAE (평균 오차)", "≤ 7.0원", f2(pm.mae) + "원", pm.mae <= 7.0],
+  ["rMAE", "≤ 0.65", pm.rmae.toFixed(4), pm.rmae <= 0.65],
+  ["MAPE", "< 5.0%", pm.mape.toFixed(2) + "%", pm.mape < 5.0],
+  ["편의", "절대값 ≤ 1.5%", (pm.bias >= 0 ? "+" : "") + pm.bias.toFixed(2) + "%", Math.abs(pm.bias) <= 1.5],
+  ["80% 범위 포함률", "75~85%", pm.cover.toFixed(1) + "%", pm.cover >= 75 && pm.cover <= 85],
+];
+$("targets").innerHTML = T.map(([n, g, v, ok]) => `<div class="goal"><div class="g-name">${n}</div><div class="g-val">${v}</div>` +
+  `<div class="g-foot"><span>목표 ${g}</span>${ok ? '<span class="ok">✓ 달성</span>' : '<span class="miss">✕ 미달</span>'}</div></div>`).join("");
+$("t-note").textContent = `${testName} 구간 ${pm.n.toLocaleString()}시간`;
+$("t-band").textContent = `80% 범위 평균 폭 ${f1(pm.width)}원 · 하한 아래 ${pm.below.toFixed(1)}% · 상한 위 ${pm.above.toFixed(1)}%`;
+
+/* ---------- 읽을 때 주의 (시험 구간 숫자) ---------- */
+const goalsMet = T.filter(t => t[3]);
+$("ev-notes").innerHTML = [
+  `가격 목표는 5개 중 ${goalsMet.length}개(${goalsMet.map(t => t[0].replace(/ \(.*\)/, "")).join(", ")}) 달성. 미달은 주로 가격이 0원 근처로 떨어지는 시간 때문입니다.`,
+  `가격 모델은 30원 아래를 거의 예측하지 못해, 급락은 경보(주의·경보)로 봐야 합니다.`,
+  `육지 급등은 드문 사건이 아니라 「평소보다 확실히 비싼 시간」입니다 — ${testName} 구간 날의 ${(E.spikeDays / E.judgeDays * 100).toFixed(0)}%.`,
+  `육지 급락은 「경보」 한 단계로, 휴일·주말에만 냅니다(학습 구간에 평일 급락이 없어 평일 경보는 헛경보만 냈음). 그래서 평일 급락은 놓칩니다.`,
+  `육지 급락·제주 급락은 학습 구간 사례가 매우 적어(9일·14일) 기준이 흔들릴 수 있습니다. 두 경보 모두 「경보」 한 단계만 냅니다.`,
+].map(s => `<li>${s}</li>`).join("");
+
+/* ---------- 월별 MAE ---------- */
+function drawMonthly() {
+  const box = $("monthly"); box.innerHTML = "";
+  const W = box.clientWidth, H = 250, m = { l: 34, r: 8, t: 18, b: 60 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, M = D.months;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "월별 MAE와 경보 적중" }, box);
+  txt(svg, m.l - 6, H - 26, "급락", "tk", "end"); txt(svg, m.l - 6, H - 8, "급등", "tk", "end");
+  const ratio = (v, cls) => !v || !v[1] ? ["–", "tk"] : [`${v[0]}/${v[1]}`, cls];   // 적중/실제, 발생 없으면 –
+  const ticks = niceTicks(0, Math.max(7.5, ...M.map(x => x.mae)), 4), y1 = ticks[ticks.length - 1];
+  const Y = v => m.t + ih - v / y1 * ih, bw = iw / M.length, cw = Math.min(24, bw * 0.6);
+  ticks.forEach(t => { s("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: t === 0 ? "ax" : "gl" }, svg); txt(svg, m.l - 6, Y(t) + 4, t, "tk", "end"); });
+  const tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip);
+  M.forEach((x, i) => {
+    const cx = m.l + bw * i + bw / 2, top = Y(x.mae), base = Y(0), r = Math.min(4, (base - top) / 2);
+    s("path", { d: `M${cx - cw / 2} ${base}V${top + r}Q${cx - cw / 2} ${top} ${cx - cw / 2 + r} ${top}H${cx + cw / 2 - r}Q${cx + cw / 2} ${top} ${cx + cw / 2} ${top + r}V${base}Z`, class: "bar-mae" }, svg);
+    txt(svg, cx, top - 5, f1(x.mae), "tk-2");
+    const nd = Math.round(x.n / 24);                          // 일부 날짜만 있는 달은 일수를 함께 표시
+    const mlab = (i === 0 || x.ym.endsWith("-01") ? `'${x.ym.slice(2, 4)}.` : "") + +x.ym.slice(5) + "월";   // 1월·첫 달은 연도 함께
+    if (bw >= 64 || nd >= 28) txt(svg, cx, base + 16, mlab + (nd < 28 ? `(${nd}일)` : ""));
+    else { txt(svg, cx, base + 14, mlab); txt(svg, cx, base + 25, `(${nd}일)`, "tk tk-xs"); }   // 좁으면 일수는 아랫줄에
+    const [tc, cc] = ratio(x.c, "tk-c"), [ts, cs] = ratio(x.s25, "tk-s");
+    txt(svg, cx, H - 26, tc, cc); txt(svg, cx, H - 8, ts, cs);
+    const hit = s("rect", { x: cx - bw / 2, y: m.t, width: bw, height: H - m.t, class: "hit" }, svg);
+    hit.addEventListener("pointermove", e => { const r2 = box.getBoundingClientRect();
+      tipAt(tip, box, e.clientX - r2.left, e.clientY - r2.top, `<b>${x.ym.slice(0, 4)}년 ${+x.ym.slice(5)}월</b><div class="row">MAE<em>${f2(x.mae)}원</em></div><div class="row">80% 범위 포함률<em>${f1(x.cover)}%</em></div>` +
+        `<div class="row"><i class="key-dot" style="background:var(--s1)"></i>급락 적중/실제<em>${x.c && x.c[1] ? `${x.c[0]}/${x.c[1]}구간` : "발생 없음"}</em></div>` +
+        `<div class="row"><i class="key-dot" style="background:var(--pos)"></i>급등 적중/실제<em>${x.s25 && x.s25[1] ? `${x.s25[0]}/${x.s25[1]}구간` : "발생 없음"}</em></div><div class="muted">${x.n.toLocaleString()}시간</div>`); });
+    hit.addEventListener("pointerleave", () => tip.style.display = "none");
+  });
+  s("line", { x1: m.l, x2: W - m.r, y1: Y(7), y2: Y(7), class: "ref" }, svg);
+}
+
+/* ---------- 시작 ---------- */
+function drawAll() { drawOverview(); drawCalendar(); drawMonthly(); select(cur); }
+const saved = store.get("smp-dash-date");
+if (saved && idxOf[saved] != null) cur = idxOf[saved];
+drawAll();
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(drawAll, 120); });
+
+/* ---------- 위쪽 메뉴 — 세 화면 ---------- */
+const VIEWS = ["overview", "day", "score"];
+function showView(v, push) {
+  if (!VIEWS.includes(v)) v = "overview";
+  VIEWS.forEach(k => { $("view-" + k).hidden = k !== v; $("tab-" + k).setAttribute("aria-selected", String(k === v)); });
+  if (push) { if (location.hash !== "#" + v) history.pushState(null, "", "#" + v); scrollTo({ top: 0 }); }
+  drawAll(); drawJejuForecast();               // 숨어 있던 화면의 그래프를 지금 너비로 다시 그림
+}
+document.querySelectorAll(".nav [data-view]").forEach(b => b.addEventListener("click", () => showView(b.dataset.view, true)));
+addEventListener("popstate", () => showView(location.hash.slice(1)));
+showView(location.hash.slice(1));
+</script>
+</body>
+</html>
